@@ -1,4 +1,4 @@
-# MLP, Step by Step
+# MLP, Step by Step.
 
 **An Interactive, First-Principles Exploration of Multilayer Perceptrons.**
 
@@ -28,11 +28,11 @@ Rather than treating neural networks as black boxes, this project aims to make t
 
 Explore the project through the live website.
 
-**[Launch MLP, Step by Step](https://chandraprakash-bathula.github.io/MLP/)**
+**[Launch MLP, Step by Step](https://chandraprakash-bathula.github.io/MLP/).**
 
 The interactive experience includes two major parts.
 
-### Part I. Foundations
+### Part I. Foundations.
 
 Explore the ideas that led to modern neural networks and understand why multilayer architectures are necessary.
 
@@ -45,7 +45,7 @@ Key topics include:
 - Hidden layers and nonlinear decision boundaries.
 - The applied machine learning pipeline.
 
-### Part II. The Network, Derived
+### Part II. The Network, Derived.
 
 Follow the mathematical operations performed by a multilayer perceptron, from input preprocessing to final evaluation.
 
@@ -67,7 +67,7 @@ Key topics include:
 
 The interactive example uses a five-layer multilayer perceptron with the following architecture.
 
-**13 → 16 → 12 → 8 → 4 → 1**
+**Network Architecture:** `13 → 16 → 12 → 8 → 4 → 1`.
 
 | Component | Description |
 |---|---|
@@ -101,64 +101,129 @@ This is an educational demonstration, not a clinically validated diagnostic syst
 
 ## Core Mathematical Concepts
 
-### 1. Forward Propagation
+### 1. Forward Propagation.
 
 Each layer transforms its input using a weight matrix, a bias vector, and an activation function.
 
-\[
-z^{(l)}=W^{(l)}a^{(l-1)}+b^{(l)}
-\]
+For layer \(l\), the linear transformation is:
 
-\[
-a^{(l)}=\phi^{(l)}(z^{(l)})
-\]
+$$
+z^{(l)} = W^{(l)}a^{(l-1)} + b^{(l)}
+$$
+
+The activation is then calculated as:
+
+$$
+a^{(l)} = \phi^{(l)}\left(z^{(l)}\right)
+$$
+
+Here, \(W^{(l)}\) represents the weight matrix, \(b^{(l)}\) represents the bias vector, and \(\phi^{(l)}\) denotes the activation function for layer \(l\).
 
 These operations repeat across the network until the output layer produces a prediction.
 
-### 2. Activation Functions
+### 2. Activation Functions.
 
 Activation functions introduce nonlinear transformations that allow neural networks to learn complex patterns.
 
-The project explores activation functions and their role in information propagation, gradient computation, and network training.
+For example, the ReLU activation function is defined as:
 
-### 3. Weight Initialization
+$$
+\operatorname{ReLU}(x) = \max(0,x)
+$$
+
+The sigmoid activation function is defined as:
+
+$$
+\sigma(x) = \frac{1}{1+e^{-x}}
+$$
+
+ReLU is commonly used in hidden layers, while sigmoid can transform a binary classification output into a probability between zero and one.
+
+### 3. Weight Initialization.
 
 Appropriate initialization helps maintain stable activation and gradient scales as information passes through multiple layers.
 
-The project examines Xavier and He initialization and the reasoning behind their variance-scaling strategies.
+Xavier initialization scales weights according to the number of input and output units. He initialization is commonly used with ReLU activations.
 
-### 4. Loss Functions
+The corresponding variance relationships are:
+
+$$
+\operatorname{Var}(W) = \frac{2}{n_{\text{in}}+n_{\text{out}}}
+$$
+
+for Xavier initialization, and:
+
+$$
+\operatorname{Var}(W) = \frac{2}{n_{\text{in}}}
+$$
+
+for He initialization, where \(n_{\text{in}}\) is the number of input units and \(n_{\text{out}}\) is the number of output units.
+
+### 4. Binary Cross-Entropy Loss.
 
 The loss function quantifies the discrepancy between model predictions and target labels.
 
-For binary classification, the binary cross-entropy loss can be written as:
+For binary classification, binary cross-entropy is defined as:
 
-\[
-\mathcal{L}=-\frac{1}{N}\sum_{i=1}^{N}
-\left[y_i\log(\hat y_i)+(1-y_i)\log(1-\hat y_i)\right]
-\]
+$$
+\mathcal{L} =
+-\frac{1}{N}\sum_{i=1}^{N}
+\left[
+y_i\log(\hat{y}_i)
++
+(1-y_i)\log(1-\hat{y}_i)
+\right]
+$$
 
-This objective provides a learning signal that guides the network toward better predictions.
+Here, \(N\) is the number of samples, \(y_i\) is the true binary label, and \(\hat{y}_i\) is the predicted probability for sample \(i\).
 
-### 5. Backpropagation
+The objective is to minimize the loss by learning suitable network parameters.
+
+### 5. Backpropagation.
 
 Backpropagation applies the chain rule to calculate how the loss changes with respect to each trainable parameter.
 
-These gradients indicate how weights and biases should change to reduce the loss.
+For a weight matrix in layer \(l\), the gradient is:
 
-### 6. Gradient Descent and Optimization
+$$
+\frac{\partial \mathcal{L}}{\partial W^{(l)}} =
+\frac{\partial \mathcal{L}}{\partial z^{(l)}}
+\left(a^{(l-1)}\right)^\top
+$$
 
-Gradient-based optimization updates the model parameters using the computed gradients.
+The gradient indicates how the loss changes when the corresponding weights change. Backpropagation propagates these derivatives through the network to calculate gradients for earlier layers.
 
-The project explores gradient descent, learning rates, and optimizers such as Adam, including their roles in convergence and training stability.
+### 6. Gradient Descent and Optimization.
 
-### 7. Regularization
+Gradient descent updates model parameters in the direction that reduces the loss.
 
-The project examines techniques that help neural networks generalize beyond their training examples.
+The parameter update rule is:
 
-These include batch normalization, dropout, and training strategies that help manage overfitting.
+$$
+\theta_{t+1} =
+\theta_t -
+\eta\nabla_{\theta}\mathcal{L}(\theta_t)
+$$
 
-## Learning Outcomes
+Here, \(\theta_t\) represents the model parameters at step \(t\), \(\eta\) is the learning rate, and \(\nabla_{\theta}\mathcal{L}\) is the gradient of the loss with respect to the parameters.
+
+The learning rate controls the size of each update. Optimization algorithms such as Adam adapt the update process to improve training behavior.
+
+### 7. Regularization.
+
+Regularization techniques help neural networks generalize beyond their training examples.
+
+Dropout randomly disables selected activations during training. For an activation \(a\), inverted dropout can be expressed as:
+
+$$
+\tilde{a} = \frac{m \odot a}{1-p}
+$$
+
+where \(m\) is a random binary mask, \(p\) is the dropout probability, and \(\odot\) denotes element-wise multiplication.
+
+Batch normalization uses batch statistics to normalize intermediate activations during training. Both techniques can influence training dynamics and generalization, although their effects depend on the model and training configuration.
+
+## Learning Outcomes.
 
 By exploring this project, learners can develop a stronger understanding of the following concepts.
 
@@ -173,7 +238,7 @@ By exploring this project, learners can develop a stronger understanding of the 
 - How to evaluate neural networks using held-out data.
 - How mathematical derivations correspond to actual model computations.
 
-## Technologies and Implementation
+## Technologies and Implementation.
 
 The project combines mathematical explanations, interactive visualizations, and browser-based model calculations.
 
@@ -181,7 +246,7 @@ The live interface includes controls for exploring different held-out patients, 
 
 Refer to the implementation for the exact technologies, training configuration, and computational details.
 
-## Future Directions
+## Future Directions.
 
 Potential extensions include the following.
 
@@ -194,7 +259,7 @@ Potential extensions include the following.
 - Adding calibration analysis and decision-threshold comparisons.
 - Extending the interactive framework to other neural network architectures.
 
-## Author
+## Author.
 
 **Chandra Prakash Bathula.**
 
@@ -204,11 +269,16 @@ Adjunct Faculty, Saint Louis University.
 - [LinkedIn](https://www.linkedin.com/in/chandra-prakash-bathula/).
 - [Medium](https://medium.com/@ChandraPrakash-Bathula).
 
-## Academic Use
+## Academic Use.
 
 This project is intended for educational and research exploration. The examples illustrate neural network concepts and should not be interpreted as medical advice or used as a substitute for professional clinical evaluation.
 
 Users should consult the original dataset documentation and applicable licensing terms when reusing the data.
+
+## References.
+
+- [UCI Machine Learning Repository. Heart Disease Dataset](https://archive.ics.uci.edu/dataset/45/heart+disease).
+- [Deep Learning Book by Ian Goodfellow, Yoshua Bengio, and Aaron Courville](https://www.deeplearningbook.org/).
 
 ---
 
