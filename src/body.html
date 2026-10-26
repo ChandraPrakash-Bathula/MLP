@@ -1,0 +1,837 @@
+<div class="topbar">
+  <div class="inner">
+    <span class="brand">MLP, Step by Step</span>
+    <select id="secNav" class="secnav" aria-label="Jump to section"></select>
+    <div class="seg" role="group" aria-label="Reading mode"><button type="button" id="modeFull" aria-pressed="true">Full math</button><button type="button" id="modePlain" aria-pressed="false">Plain</button></div>
+    <button type="button" class="btn" id="ctlBtn" aria-expanded="false" aria-controls="netCtl">Controls</button>
+    <div class="netctl" id="netCtl">
+    <div class="ctl"><span class="lab">Patient</span>
+      <button class="btn" id="prevPatient" aria-label="Previous patient">‹</button>
+      <select id="patientSel" aria-label="Choose a test patient"></select>
+      <button class="btn" id="nextPatient" aria-label="Next patient">›</button></div>
+    <div class="ctl"><span class="lab">Weights</span>
+      <select id="weightsSel" aria-label="Weights"><option value="init">initial weights</option><option value="trained">trained weights</option></select></div>
+    <div class="ctl"><span class="lab">Activation</span>
+      <select id="actSel" aria-label="Hidden activation"><option value="relu">ReLU</option><option value="leaky">Leaky ReLU</option><option value="tanh">tanh</option><option value="sigmoid">sigmoid</option></select></div>
+    <div class="ctl"><span class="lab">Init</span>
+      <select id="initSel" aria-label="Weight initialization"><option value="he">He init</option><option value="xavier">Xavier init</option><option value="small">N(0, 0.01²) init</option><option value="zeros">zeros init</option></select></div>
+    </div>
+  </div>
+  <div class="prog" aria-hidden="true"><i id="progBar"></i></div>
+</div>
+
+<nav class="toc" id="toc" aria-label="Contents">
+  <div class="t-h">Contents</div>
+  <div class="t-p">I · Foundations</div>
+  <a href="#history"><span>A</span>A brief history</a>
+  <a href="#bio"><span>B</span>Biological vs artificial</a>
+  <a href="#perceptron"><span>C</span>Perceptron vs logistic</a>
+  <a href="#mlp"><span>D</span>Why hidden layers</a>
+  <a href="#pipeline"><span>E</span>The applied pipeline</a>
+  <div class="t-p">II · The network, derived</div>
+  <a href="#notation"><span>0</span>Notation</a>
+  <a href="#data"><span>1</span>The learning problem</a>
+  <a href="#network"><span>2</span>Architecture</a>
+  <a href="#layer"><span>3</span>Neuron, init, activation</a>
+  <a href="#batchnorm"><span>4</span>Batch normalization</a>
+  <a href="#dropout"><span>5</span>Dropout</a>
+  <a href="#loss"><span>6</span>Likelihood and loss</a>
+  <a href="#backprop"><span>7</span>Backpropagation</a>
+  <a href="#update"><span>8</span>Gradient descent</a>
+  <a href="#optimizers"><span>9</span>Optimizers</a>
+  <a href="#training"><span>10</span>Training and regularization</a>
+  <a href="#results"><span>11</span>Evaluation</a>
+</nav>
+
+<main>
+<header style="padding-top:64px">
+  <div class="kicker">AA-5750 Contemporary Issues in Analytics · Week 2 · Interactive notes</div>
+  <h1>MLP, Step by Step</h1>
+  <p class="subtitle">How a multilayer perceptron learns, derived from first principles and computed live on 303 real patients.</p>
+  <div class="byline">
+    <div><b>Chandra Prakash Bathula</b>Instructor</div>
+    <div><b>UCI Heart Disease (Cleveland)</b>303 patients, 13 features</div>
+    <div><b>13–16–12–8–4–1 MLP</b>trained in your browser</div>
+  </div>
+</header>
+
+<figure class="wide">
+  <canvas id="heroCanvas" width="1600" height="700" aria-label="A rotating view of the network: signals flow forward, gradients flow back"></canvas>
+  <figcaption><b>Figure 0.</b> The network studied in this article. Signals propagate forward through five affine-plus-nonlinear layers (blue); the error signal propagates backward to every weight (orange).</figcaption>
+</figure>
+
+<div class="kpis" id="heroKpis"></div>
+
+<div class="abstract">
+  <div class="ab-h">Abstract</div>
+  <p>We follow one patient through a five-layer multilayer perceptron and derive every quantity the network computes: the standardised inputs, each affine map and activation, the variance argument behind He and Xavier initialization, batch normalization and its backward pass, dropout as an implicit ensemble, the cross-entropy loss from the Bernoulli likelihood, backpropagation as reverse-mode differentiation, the stability condition for gradient descent, and the optimizers that cope with ill-conditioning, saddle points and plateaus. Each derivation is paired with a figure computed from the actual network, so every number on the page can be traced from first principles.</p>
+  <p>Part I sets the stage for practitioners: where neural networks came from, how an artificial neuron relates to a biological one and to logistic regression, why hidden layers are needed, and what the whole pipeline looks like in an applied project. After every key equation, a teal <b style="color:var(--plain)">In plain words</b> box restates the idea without mathematics and ties it to a real use case.</p>
+</div>
+<p class="side"><b>How to read this page.</b> The bar at the top chooses one of 61 held-out test patients, the activation and the initialization. Figures marked <span class="live-dot">live</span> recompute for that patient; <span class="live-dot run">run</span> marks a real training run; <span class="live-dot toy">toy</span> marks a two-parameter illustration.</p>
+
+<div class="part"><div class="p-k">Part I</div><div class="p-t">Foundations</div><p>Eighty years of ideas in five short sections, adapted from the <i>Deep Learning</i> series on Towards AI, Parts 1–4.</p></div>
+
+<!-- A HISTORY -->
+<section id="history">
+  <h2><span class="num">A</span>A brief history of deep learning</h2>
+  <p class="lead">Nearly every component on this page is decades old. What changed after 2010 was the amount of data, the speed of GPUs, and a handful of training techniques that made deep networks trainable.</p>
+  <figure class="wide">
+    <div class="fig-body"><div><svg id="timeSvg" viewBox="0 0 1060 344" role="img" aria-label="Timeline of neural network research from 1943 to 2022"></svg></div></div>
+    <figcaption><b>Figure A.1.</b> Milestones from 1943 to 2022. Shaded bands are the two "AI winters", when funding and interest collapsed. Violet markers are techniques used in this article, labelled with the section that covers them. Hover a marker for details.</figcaption>
+  </figure>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Each breakthrough fixed a specific failure of the one before. The perceptron could not learn XOR (section C), so hidden layers were needed. Hidden layers could not be trained until backpropagation (section 7). Deep stacks trained poorly until ReLU, careful initialization, batch norm and dropout (sections 3–5). Knowing the failure each idea solves is the fastest way to know when you need it.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>The recipe for deep learning was written long ago; the kitchen arrived late. A network that learns from examples needs many examples and a lot of arithmetic. Until roughly 2010 there was neither enough labelled data nor fast enough hardware, so simpler methods won. ImageNet (1.2 million labelled photos) and gaming GPUs changed that, and AlexNet's 2012 win made the whole field switch almost overnight.</p>
+    <p class="uc"><b>Applied</b>The same economics apply in your organisation. If a problem has thousands of rows and a few dozen columns, classical models are often enough. If it has millions of rows, or raw images, text or audio, deep learning tends to win, because performance keeps improving as data grows while classical methods level off.</p></div>
+  <p class="src">Further reading: <a href="https://medium.com/towards-artificial-intelligence/deep-learning-series-a-brief-history-of-deep-learning-evolution-1-92e7873218c7?sk=c0eb6a425e357938cb6b7a86fd268440" target="_blank" rel="noopener">Deep Learning Series, Part 1: a brief history of deep learning</a>.</p>
+</section>
+
+<!-- B BIO VS ANN -->
+<section id="bio">
+  <h2><span class="num">B</span>Biological neurons and artificial neurons</h2>
+  <p class="lead">An artificial neuron borrows one idea from biology: a cell that adds up weighted incoming signals and "fires" when the total is large enough.</p>
+  <div class="figrow wide">
+    <figure><div class="fig-body"><div class="blogfig"><img src="{{IMG:bio_neuron}}" alt="Biological neuron with dendrites, cell body, axon and synaptic terminals"></div></div>
+      <figcaption><b>Figure B.1.</b> A biological neuron. Dendrites receive signals, the cell body integrates them, and the axon carries the output to synapses on other cells.</figcaption></figure>
+    <figure><div class="fig-body"><svg id="annSvg" viewBox="0 0 520 320" role="img" aria-label="Artificial neuron: inputs x1 to xn, weights w1 to wn, a bias, a weighted sum and an activation function"></svg></div>
+      <figcaption><b>Figure B.2.</b> An artificial neuron: inputs times weights, plus a bias, summed to \(z\) and passed through an activation \(f\). Redrawn from Part 2 of the blog series.</figcaption></figure>
+  </div>
+  <div class="scroll"><table class="t wrap">
+    <tr><th>Biology</th><th>Artificial neuron</th><th>On this page</th></tr>
+    <tr><td>Dendrites</td><td>Inputs \(x_i\)</td><td>13 standardised clinical measurements</td></tr>
+    <tr><td>Synaptic strength</td><td>Weights \(w_i\)</td><td>573 learned numbers (eq. 2.4)</td></tr>
+    <tr><td>Cell body integrates charge</td><td>Weighted sum \(z = \sum_i w_i x_i + b\)</td><td>Eq. (3.1), Figure 3.2</td></tr>
+    <tr><td>Firing threshold</td><td>Bias \(b\) and activation \(\phi\)</td><td>ReLU in hidden layers, sigmoid at the output</td></tr>
+    <tr><td>Axon</td><td>Output \(a = \phi(z)\), sent to the next layer</td><td>Figure 3.8</td></tr>
+    <tr><td>Practice strengthens connections</td><td>Training adjusts weights</td><td>Backpropagation and the update, sections 7–8</td></tr>
+  </table></div>
+  <div class="box def"><div class="box-h">Definition · McCulloch–Pitts neuron (1943) and Hebb's rule (1949)</div>
+    \[ y = \mathbb{1}\Bigl[\, \sum_{i} w_i x_i \ge \theta \,\Bigr], \qquad x_i, y \in \{0, 1\} \tag{B.1} \]
+    \[ \Delta w_i = \eta\, x_i\, y \qquad \text{("cells that fire together wire together")} \tag{B.2} \]
+    <p>McCulloch and Pitts showed that networks of such threshold units can compute any logical function, but their weights were set by hand. Hebb proposed that a connection strengthens whenever the two cells it joins are active together, the first rule for learning weights from experience.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>A neuron is a tiny voting booth. Each input casts a vote, the weight says how much that vote counts, and if the weighted total clears a bar the neuron says "yes". Learning means changing how much each vote counts. It works the way expertise does: a radiologist who has read thousands of scans has strengthened exactly the connections that matter, so the right pattern is recognised in seconds.</p>
+    <p class="uc"><b>Applied</b>The analogy stops there. Your brain has about 86 billion neurons and 10<sup>14</sup> synapses; the network on this page has 41 neurons and 573 weights. Artificial networks are inspired by biology but are really just well-organised arithmetic, which is why they can be trained, inspected and deployed like any other software.</p></div>
+  <p class="src">Further reading: <a href="https://medium.com/towards-artificial-intelligence/deep-learning-biological-neural-network-vs-artificial-neural-network-580f92129b47?sk=cbe75a78211ce42147829df600ade1db" target="_blank" rel="noopener">Part 2: biological neural network vs artificial neural network</a>.</p>
+</section>
+
+<!-- C PERCEPTRON VS LOGISTIC REGRESSION -->
+<section id="perceptron">
+  <h2><span class="num">C</span>The perceptron and logistic regression</h2>
+  <p class="lead">Rosenblatt's perceptron (1958) was the first neuron that learned its own weights. Replace its hard step with a smooth sigmoid and you get logistic regression, which is exactly the output unit of our network.</p>
+  <div class="figrow wide">
+    <figure><div class="fig-body"><svg id="percSvg" viewBox="0 0 520 320" role="img" aria-label="Perceptron: inputs, weights, a sum and a step activation"></svg></div>
+      <figcaption><b>Figure C.1.</b> Perceptron: the weighted sum passes through a step function, so the output is a hard 0 or 1.</figcaption></figure>
+    <figure><div class="fig-body"><svg id="lrSvg" viewBox="0 0 520 320" role="img" aria-label="Logistic regression: the same structure with a sigmoid activation and the bias as a weight on a constant input 1"></svg></div>
+      <figcaption><b>Figure C.2.</b> Logistic regression: the same diagram with a sigmoid, so the output is a probability. The bias is a weight on a constant input of 1. Both redrawn from Part 3.</figcaption></figure>
+  </div>
+  <div class="box def"><div class="box-h">Definition · two learning rules with the same shape</div>
+    \[ \text{Perceptron:}\quad \hat y = \mathbb{1}[\mathbf{w}^{\top}\mathbf{x} + b \ge 0], \qquad \mathbf{w} \leftarrow \mathbf{w} + \eta\, (y - \hat y)\, \mathbf{x} \tag{C.1} \]
+    \[ \text{Logistic regression:}\quad \hat y = \sigma(\mathbf{w}^{\top}\mathbf{x} + b), \qquad \mathbf{w} \leftarrow \mathbf{w} - \eta\, (\hat y - y)\, \mathbf{x} \tag{C.2} \]
+    <p>The updates look identical, but the perceptron only moves when it makes a mistake (\(y - \hat y \in \{-1, 0, 1\}\)), while logistic regression moves on every example in proportion to how wrong its probability is. The second rule is gradient descent on the cross-entropy loss, which section 6 derives as eq. (6.3).</p></div>
+  <div class="scroll"><table class="t wrap">
+    <tr><th></th><th>Perceptron</th><th>Logistic regression</th></tr>
+    <tr><td>Output</td><td>Hard label, 0 or 1</td><td>Probability between 0 and 1</td></tr>
+    <tr><td>Activation</td><td>Step (not differentiable)</td><td>Sigmoid (smooth)</td></tr>
+    <tr><td>Loss</td><td>Counts mistakes</td><td>Cross-entropy, eq. (6.2)</td></tr>
+    <tr><td>Convergence</td><td>Only if the classes are linearly separable (Novikoff, 1962)</td><td>Always, to the single optimum of a convex loss</td></tr>
+    <tr><td>Decision boundary</td><td>A straight line (hyperplane)</td><td>Also a straight line, the 0.5 contour</td></tr>
+  </table></div>
+  <figure class="wide">
+    <div class="fig-body"><div class="scroll"><svg id="gatesSvg" viewBox="0 0 1060 300" role="img" aria-label="AND, OR and XOR: a single line separates AND and OR but not XOR"></svg></div></div>
+    <figcaption><b>Figure C.3.</b> One neuron draws one straight line. AND and OR can be separated; XOR cannot: the best line still misclassifies one of the four points (red ring). Minsky and Papert's 1969 book made this limit famous and helped bring on the first AI winter.</figcaption>
+  </figure>
+  <div class="box deriv"><div class="box-h">Proof · no single neuron computes XOR</div>
+    <p>Suppose \(\mathbb{1}[w_1 x_1 + w_2 x_2 + b \ge 0]\) computes XOR. The four rows of its truth table require</p>
+    \[ b \lt 0, \qquad w_1 + b \ge 0, \qquad w_2 + b \ge 0, \qquad w_1 + w_2 + b \lt 0 \tag{C.3} \]
+    <p>Adding the middle two gives \(w_1 + w_2 + 2b \ge 0\), so \(w_1 + w_2 + b \ge -b \gt 0\), contradicting the last inequality. The same holds for a sigmoid unit thresholded at 0.5.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>A perceptron is a rubber stamp: approved or rejected, with no sense of how sure it is. Logistic regression is the same machine with a dial: "73% likely". The dial matters because a probability can be ranked, thresholded later, and trained smoothly. But both can only draw one straight line through the data, and some patterns, such as "exactly one of these two things is true", cannot be split by any single line.</p>
+    <p class="uc"><b>Applied</b>Always fit logistic regression first. It is fast, explainable, and is the baseline any neural network must beat. On these 242 training patients it reaches <span id="lrKpi">…</span> on the 61 test patients; compare the MLP in section 11. If the MLP cannot clearly beat it, ship the simpler model.</p></div>
+  <p class="src">Further reading: <a href="https://medium.com/towards-artificial-intelligence/deep-learning-perceptron-vs-logistic-regression-3f73f91e01d3?sk=563986820350d714c9297ffe5c87af0b" target="_blank" rel="noopener">Part 3: perceptron vs logistic regression</a>.</p>
+</section>
+
+<!-- D MLP -->
+<section id="mlp">
+  <h2><span class="num">D</span>Why hidden layers: the multilayer perceptron</h2>
+  <p class="lead">Stack neurons in layers and let the hidden layer invent new features. Two hidden units are enough to solve XOR, and the same idea, scaled up, is the network studied in Part II.</p>
+  <figure class="wide">
+    <div class="fig-body"><svg id="deepSvg" viewBox="0 0 1000 310" role="img" aria-label="A network with two hidden layers and one with N hidden layers"></svg></div>
+    <figcaption><b>Figure D.1.</b> A two-layer and an \(N\)-layer perceptron. Every unit in one layer connects to every unit in the next ("fully connected" or "dense"). The blog's observation that "as layers increased, backpropagation failed" is the vanishing-gradient problem that section 7 explains and sections 3–4 fix. Redrawn from Part 4.</figcaption>
+  </figure>
+  <div class="box def"><div class="box-h">Construction · XOR from two hidden units</div>
+    \[ \begin{aligned} h_1 &= \mathbb{1}[x_1 + x_2 - 0.5 \ge 0] &&(\text{OR}) \\ h_2 &= \mathbb{1}[x_1 + x_2 - 1.5 \ge 0] &&(\text{AND}) \\ \hat y &= \mathbb{1}[h_1 - h_2 - 0.5 \ge 0] &&(\text{XOR}) \end{aligned} \tag{D.1} \]
+    <p>The output computes "OR but not AND", which is XOR. Each unit on its own is a perceptron; the combination is not.</p></div>
+  <figure class="wide">
+    <div class="fig-body"><div class="grid2" style="grid-template-columns:minmax(0,5fr) minmax(0,2fr);align-items:center"><div class="scroll"><svg id="xorSvg" viewBox="0 0 700 310" role="img" aria-label="XOR in input space with two lines, and in hidden space where it becomes linearly separable"></svg></div>
+    <div class="scroll"><table class="t truth">
+      <tr><th>\(x_1\)</th><th>\(x_2\)</th><th>\(h_1\) OR</th><th>\(h_2\) AND</th><th>\(\hat y\) XOR</th></tr>
+      <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+      <tr><td>0</td><td>1</td><td>1</td><td>0</td><td><b>1</b></td></tr>
+      <tr><td>1</td><td>0</td><td>1</td><td>0</td><td><b>1</b></td></tr>
+      <tr><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td></tr>
+    </table></div></div></div>
+    <figcaption><b>Figure D.2.</b> Left: the two hidden units draw two dashed lines in input space; XOR is the shaded band between them. Middle: in the hidden space \((h_1, h_2)\), the two orange points land on the same spot \((1, 0)\) and a single line now separates the classes. Right: eq. (D.1) row by row.</figcaption>
+  </figure>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>A hidden layer is a set of intermediate questions the network asks itself. For XOR they are "is at least one input on?" and "are both on?". Given those answers, the final decision is easy. Deep learning works the same way at scale: early layers learn simple signals, later layers combine them into more useful ones, and the last layer only has to draw a straight line in that new space. Figure 11.3 shows our trained network doing exactly this with real patients.</p>
+    <p class="uc"><b>Applied</b>You never design these intermediate questions by hand. That is the main practical difference from classical machine learning, where an analyst engineers features such as "income-to-debt ratio". An MLP learns its own features from the raw columns, given enough data.</p></div>
+  <p class="src">Further reading: <a href="https://medium.com/towards-artificial-intelligence/deep-learning-multi-layered-perceptron-mlp-8abef7ee5662?sk=9d192d242ae351f44b7f9657bb3845a2" target="_blank" rel="noopener">Part 4: the multilayer perceptron</a>.</p>
+</section>
+
+<!-- E PIPELINE -->
+<section id="pipeline">
+  <h2><span class="num">E</span>The applied pipeline at a glance</h2>
+  <p class="lead">Every supervised deep-learning project, from heart-disease screening to fraud detection, runs the same loop. Part II takes each step in turn; this is the map.</p>
+  <div class="wide">
+    <div class="pipe">
+      <a href="#data"><span class="n">01 · §1</span><span class="h">Collect and split</span><span class="d">Labelled rows; hold out a test set you never train on.</span><span class="s">303 patients → 242 / 61</span></a>
+      <a href="#data"><span class="n">02 · §1.1</span><span class="h">Scale the inputs</span><span class="d">Put every column on the same scale, using training statistics only.</span><span class="s">z-scores</span></a>
+      <a href="#network"><span class="n">03 · §2–3</span><span class="h">Forward pass</span><span class="d">Each layer: weighted sum, plus bias, through an activation.</span><span class="s">13 → 16 → 12 → 8 → 4 → 1</span></a>
+      <a href="#batchnorm"><span class="n">04 · §4–5</span><span class="h">Stabilise and regularise</span><span class="d">Batch norm keeps signals tidy; dropout stops memorising.</span><span class="s">BN, p = 0.3</span></a>
+      <a href="#loss" class="loop"><span class="n">05 · §6</span><span class="h">Measure the error</span><span class="d">One number for how wrong the predictions are.</span><span class="s">cross-entropy</span></a>
+      <a href="#backprop" class="loop"><span class="n">06 · §7</span><span class="h">Assign the blame</span><span class="d">Backpropagation: how much each weight contributed.</span><span class="s">573 gradients per step</span></a>
+      <a href="#update" class="loop"><span class="n">07 · §8–9</span><span class="h">Nudge the weights</span><span class="d">A small step downhill; the optimizer picks its size.</span><span class="s">Adam, η = 0.01</span></a>
+      <a href="#results"><span class="n">08 · §10–11</span><span class="h">Evaluate and deploy</span><span class="d">Test once on held-out data, pick a threshold, then monitor.</span><span class="s">accuracy, AUC, recall</span></a>
+    </div>
+    <p class="pipe-note" style="margin-top:12px"><span>Dashed cards 05–07 repeat for every mini-batch, many times per epoch.</span><span>One epoch = one pass over the training data.</span></p>
+  </div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Training a network is like a student working through a practice book. Read a question (forward pass), check the answer key (loss), figure out which reasoning step went wrong (backpropagation), adjust (update), and move on to the next page. One pass through the book is an epoch. The real exam, the test set, is taken only once at the end; peeking at it during practice is how models end up looking better than they are.</p></div>
+  <h3><span class="num">E.1</span>The same pipeline across industries</h3>
+  <div class="scroll"><table class="t wrap">
+    <tr><th>Use case</th><th>Inputs (one row)</th><th>Output layer and loss</th><th>What to watch in practice</th></tr>
+    <tr><td>Heart-disease screening (this page)</td><td>Age, blood pressure, cholesterol, ECG, exercise test</td><td>1 sigmoid unit, binary cross-entropy</td><td>Recall: a missed patient costs far more than a false alarm</td></tr>
+    <tr><td>Credit default</td><td>Income, utilisation, payment history, tenure</td><td>1 sigmoid unit, cross-entropy with class weights</td><td>Fairness across groups; explainability for regulators</td></tr>
+    <tr><td>Customer churn</td><td>Usage trend, support tickets, plan, tenure</td><td>1 sigmoid unit, cross-entropy</td><td>Precision in the top 5% scored, where the retention budget goes</td></tr>
+    <tr><td>Card fraud</td><td>Amount, merchant, time, device, velocity features</td><td>1 sigmoid unit, cross-entropy with a positive weight</td><td>Extreme imbalance (about 0.1% fraud): use PR-AUC, not accuracy</td></tr>
+    <tr><td>Product category</td><td>Title embeddings, price, seller</td><td>\(K\) softmax units, categorical cross-entropy</td><td>Rare classes; confusion between similar categories</td></tr>
+    <tr><td>Demand forecasting</td><td>Lagged sales, price, promotions, calendar</td><td>1 linear unit, mean squared or absolute error</td><td>Leakage from future data; seasonality; drift</td></tr>
+  </table></div>
+  <div class="box prac"><div class="box-h">In practice · when to reach for an MLP</div>
+    <ul>
+      <li>On small tabular data (hundreds to tens of thousands of rows), gradient-boosted trees are usually as good or better, and easier to tune. Try them and logistic regression first.</li>
+      <li>MLPs earn their place with large data, many interacting features, high-cardinality categories (learned embeddings), or when tabular inputs are combined with text, images or other networks.</li>
+      <li>The ideas on this page (scaling, initialization, normalization, dropout, optimizers) carry over unchanged to CNNs and Transformers.</li>
+    </ul></div>
+</section>
+
+<div class="part"><div class="p-k">Part II</div><div class="p-t">The network, derived</div><p>One patient, five layers, every quantity computed live. Each derivation is followed by its plain-language reading.</p></div>
+
+<!-- 0 NOTATION -->
+<section id="notation">
+  <h2><span class="num">0</span>Notation</h2>
+  <p>Vectors are bold lower case, matrices upper case. Superscripts index layers, subscripts index units or examples. The network has \(L = 5\) weight layers with widths \(n_0 = 13\), \(n_1 = 16\), \(n_2 = 12\), \(n_3 = 8\), \(n_4 = 4\), \(n_5 = 1\).</p>
+  <div class="scroll"><table class="t notation">
+    <tr><td>\(\mathbf{x} \in \mathbb{R}^{13},\; y \in \{0,1\}\)</td><td>standardised features of one patient and its label (1 = heart disease)</td></tr>
+    <tr><td>\(W^{(l)} \in \mathbb{R}^{n_l \times n_{l-1}},\; \mathbf{b}^{(l)}\)</td><td>weights and biases of layer \(l\); row \(j\) of \(W^{(l)}\) belongs to neuron \(j\)</td></tr>
+    <tr><td>\(\mathbf{z}^{(l)},\; \mathbf{a}^{(l)}\)</td><td>pre-activation (weighted sum) and activation of layer \(l\); \(\mathbf{a}^{(0)} = \mathbf{x}\)</td></tr>
+    <tr><td>\(\phi,\; \sigma\)</td><td>hidden activation (ReLU by default) and the logistic sigmoid at the output</td></tr>
+    <tr><td>\(\hat y = \sigma(z^{(5)})\)</td><td>predicted probability of disease</td></tr>
+    <tr><td>\(\mathcal{L},\; \boldsymbol{\delta}^{(l)} = \partial \mathcal{L} / \partial \mathbf{z}^{(l)}\)</td><td>loss and the error signal at layer \(l\)</td></tr>
+    <tr><td>\(\boldsymbol{\theta},\; \eta,\; B\)</td><td>all 573 trainable parameters, the learning rate, the mini-batch</td></tr>
+    <tr><td>\(H = \nabla^2 \mathcal{L}\)</td><td>the Hessian, whose eigenvalues \(\lambda_i\) are the curvatures of the loss surface</td></tr>
+  </table></div>
+</section>
+
+<!-- 1 DATA -->
+<section id="data">
+  <h2><span class="num">1</span>The learning problem</h2>
+  <p class="lead">Supervised learning chooses parameters that make a model's predictions agree with labelled examples, in the hope that the agreement carries over to patients the model has never seen.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Everything later in this article (the architecture, the loss, the optimizer) is a design choice in service of one objective. Stating that objective precisely tells us what "learning" means and what can go wrong: a model can drive the objective down on the training data while getting worse on new data.</p></div>
+  <div class="box def"><div class="box-h">Definition · empirical risk minimization</div>
+    <p>Given \(N\) training pairs \(\{(\mathbf{x}_i, y_i)\}_{i=1}^{N}\) and a model \(f_{\boldsymbol\theta}\), training solves</p>
+    \[ \boldsymbol\theta^\star = \arg\min_{\boldsymbol\theta}\; \hat R(\boldsymbol\theta) = \arg\min_{\boldsymbol\theta}\; \frac{1}{N}\sum_{i=1}^{N} \mathcal{L}\bigl(f_{\boldsymbol\theta}(\mathbf{x}_i),\, y_i\bigr) \tag{1.1} \]
+    <p>What we actually care about is the expected risk \(R(\boldsymbol\theta) = \mathbb{E}_{(\mathbf{x},y)}[\mathcal{L}(f_{\boldsymbol\theta}(\mathbf{x}), y)]\). The test set estimates it, and the difference</p>
+    \[ \text{generalization gap} = R(\boldsymbol\theta) - \hat R(\boldsymbol\theta) \tag{1.2} \]
+    <p>is what regularization (sections 4, 5 and 10) tries to keep small. Here \(N = 242\) training patients and 61 test patients, split once with a fixed seed.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Training is studying with past exam papers that come with an answer key. Eq. (1.1) says: adjust the model until its answers on those papers are as good as possible. The test set is the real exam with new questions. The generalization gap (1.2) is the difference between memorising the answer key and actually understanding the subject.</p>
+    <p class="uc"><b>Applied</b>A churn model is trained on last year's customers but judged on how well it flags next quarter's. Always keep data the model never sees during training, and when the data has a time order, split by time rather than at random.</p></div>
+
+  <h3><span class="num">1.1</span>Standardisation and conditioning</h3>
+  <p>Each feature is converted to a z-score using statistics of the training set only:</p>
+  \[ x_j = \frac{\text{raw}_j - \mu_j}{\sigma_j}, \qquad \mu_j = \frac1N \sum_i \text{raw}_{ij}, \quad \sigma_j^2 = \frac1N\sum_i (\text{raw}_{ij} - \mu_j)^2 \tag{1.3} \]
+  <p class="side"><b>Data leakage.</b> Computing \(\mu, \sigma\) on all 303 patients would let information from the test set shape the training inputs, and the test score would be optimistic.</p>
+  <div class="box deriv"><div class="box-h">Derivation · why scale affects learning</div>
+    <p>For a linear model with squared loss, \(\hat R(\mathbf{w}) = \frac{1}{2N}\lVert X\mathbf{w} - \mathbf{y}\rVert^2\), the Hessian is constant:</p>
+    \[ H = \tfrac1N X^{\top} X, \qquad \kappa = \frac{\lambda_{\max}(H)}{\lambda_{\min}(H)} \tag{1.4} \]
+    <p>Gradient descent with the best fixed step shrinks the error by a factor \(\tfrac{\kappa - 1}{\kappa + 1}\) per step. Cholesterol (\(\sigma \approx 51\)) next to sex (\(\sigma \approx 0.47\)) puts eigenvalues roughly \(10^4\) apart, so \(\kappa\) is huge and progress along the small directions crawls. Standardising equalises the diagonal of \(H\) and typically shrinks \(\kappa\) by orders of magnitude. The same intuition carries over to neural networks, whose first layer is exactly such a linear map.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Standardising puts every column in the same units: "how unusual is this value for a patient?". Without it, cholesterol (values in the hundreds) would shout over sex (0 or 1) simply because its numbers are bigger, and training would zigzag slowly, like walking down a long narrow canyon instead of a round bowl.</p>
+    <p class="uc"><b>Applied</b>Fit the scaler on training data only and save it with the model. In production, every new loan application or transaction must be scaled with the same stored means and standard deviations, or the model sees numbers it was never trained on. A scikit-learn <code>Pipeline</code> does this automatically.</p></div>
+
+  <figure class="wide">
+    <div class="fig-body">
+      <svg id="profileSvg" viewBox="0 0 1040 390" role="img" aria-label="Standardised feature values of this patient"></svg>
+      <div class="texlive" id="zscoreBox"></div>
+    </div>
+    <figcaption><b>Figure 1.1.</b> <span id="profileTitle">Patient profile</span>. Each bar is one standardised input: how many training standard deviations the patient lies above (green) or below (red) the mean. Raw values on the right. <span class="live-dot">live</span></figcaption>
+  </figure>
+
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><svg id="scatterSvg" viewBox="0 0 1100 330" role="img" aria-label="Scatter plots of patients by pairs of features"></svg></div>
+      <figcaption><b>Figure 1.2.</b> Three feature pairs, coloured by diagnosis (red: disease, blue: none); the ring is the selected patient. No straight line separates the classes in any pair, so the model must combine all 13 inputs non-linearly. <span class="live-dot">live</span></figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><svg id="spreadSvg" viewBox="0 0 460 330" role="img" aria-label="Spread of each raw feature versus after standardising"></svg></div>
+      <figcaption><b>Figure 1.3.</b> Standard deviation of each raw feature (grey, log scale) against 1 after standardising (blue): a hundredfold range in scale is removed before training.</figcaption>
+    </figure>
+  </div>
+  <div class="kpis" id="dataKpis"></div>
+  <div class="box prac"><div class="box-h">In practice</div>
+    <ul>
+      <li>Fit the scaler on the training split only, then apply the same \(\mu, \sigma\) to validation and test data.</li>
+      <li><code>cp</code> and <code>thal</code> are categorical. We standardise their codes to keep the example small; one-hot encoding is the more principled choice.</li>
+    </ul></div>
+  <details><summary>Full feature table for the selected patient</summary><div class="scroll"><table class="t" id="featTable"></table></div></details>
+</section>
+
+<!-- 2 ARCHITECTURE -->
+<section id="network">
+  <h2><span class="num">2</span>Architecture</h2>
+  <p class="lead">A multilayer perceptron is a composition of simple maps: an affine transformation followed by an element-wise non-linearity, repeated layer after layer.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Composition is what gives depth its power. Each layer re-represents its input, so later layers can build features out of earlier ones. The architecture fixes the hypothesis class: which functions the network can express at all, before any training happens.</p></div>
+  <div class="box def"><div class="box-h">Definition · layer and network</div>
+    \[ \mathbf{z}^{(l)} = W^{(l)} \mathbf{a}^{(l-1)} + \mathbf{b}^{(l)}, \qquad \mathbf{a}^{(l)} = \phi\bigl(\mathbf{z}^{(l)}\bigr), \qquad l = 1, \dots, 4 \tag{2.1} \]
+    \[ \hat y = f_{\boldsymbol\theta}(\mathbf{x}) = \sigma\Bigl(W^{(5)}\, \phi\bigl(W^{(4)} \cdots \phi(W^{(1)} \mathbf{x} + \mathbf{b}^{(1)}) \cdots\bigr) + b^{(5)}\Bigr) \tag{2.2} \]
+    <p>For a mini-batch stacked as rows of \(A^{(l-1)} \in \mathbb{R}^{|B| \times n_{l-1}}\), the same computation is one matrix product per layer, which is why GPUs train networks quickly:</p>
+    \[ A^{(l)} = \phi\bigl(A^{(l-1)} W^{(l)\top} + \mathbf{1}\, \mathbf{b}^{(l)\top}\bigr) \tag{2.3} \]
+    \[ |\boldsymbol\theta| = \sum_{l=1}^{5} \bigl(n_{l-1} n_l + n_l\bigr) = 224 + 204 + 104 + 36 + 5 = 573 \tag{2.4} \]</div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Think of the network as a chain of analyst teams. The first team of 16 reads the 13 raw measurements and each writes its own score; the next team of 12 reads those 16 scores, and so on, until a single analyst gives the final probability. Every arrow between two analysts is one weight, a dial saying how much one listens to the other. This network has 573 such dials, and training means finding good settings for all of them.</p>
+    <p class="uc"><b>Applied</b>For tabular use cases, 2–4 hidden layers of 16–256 units are typical. Keep an eye on the ratio of parameters to training rows: 573 parameters for 242 patients is a lot, which is why sections 4, 5 and 10 are needed.</p></div>
+  <div class="box def"><div class="box-h">Theorem · universal approximation (Cybenko 1989; Hornik 1991; Leshno et al. 1993)</div>
+    <p>Let \(\phi\) be continuous and not a polynomial, \(K \subset \mathbb{R}^d\) compact, \(g : K \to \mathbb{R}\) continuous and \(\varepsilon > 0\). Then there exist \(m\), \(\mathbf{w}_j\), \(b_j\), \(v_j\) such that</p>
+    \[ \sup_{\mathbf{x} \in K}\; \Bigl|\, g(\mathbf{x}) - \sum_{j=1}^{m} v_j\, \phi(\mathbf{w}_j^{\top}\mathbf{x} + b_j) \Bigr| \lt \varepsilon \tag{2.5} \]
+    <p>The theorem guarantees existence, not learnability, and \(m\) may need to be enormous. Depth helps in practice because some functions computed by deep networks need exponentially many units to match with a single hidden layer (Telgarsky, 2016).</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>With enough neurons, a network can imitate any smooth pattern, the way enough Lego bricks can build any shape. But the theorem only says the right bricks exist. It does not say how many you need, whether training will find them, or whether you have enough data to tell a real pattern from noise.</p></div>
+
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl"><button class="btn primary" id="playFwd">▶ Play forward pass</button><span class="lab">Click a layer to inspect it in section 3</span></div>
+      <div class="scroll"><svg id="netSvg" viewBox="0 0 1060 470" role="img" aria-label="Network diagram"></svg></div>
+    </div>
+    <figcaption><b>Figure 2.1.</b> The forward pass for the selected patient. Circles are shaded by each unit's activation; lines are weights (green positive, red negative, opacity proportional to magnitude). <span class="live-dot">live</span></figcaption>
+  </figure>
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><div id="net3d" class="plot3d" role="img" aria-label="Rotatable 3D view of the network"></div></div>
+      <figcaption><b>Figure 2.2.</b> The same network in three dimensions, each layer drawn as a ring. Only the strongest 35% of connections are shown. Drag to rotate. <span class="live-dot">live</span></figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><svg id="paramSvg" viewBox="0 0 460 250" role="img" aria-label="Parameters per layer"></svg>
+        <details><summary>Parameter table</summary><div class="scroll"><table class="t" id="paramTable"></table></div></details></div>
+      <figcaption><b>Figure 2.3.</b> Parameters per layer, eq. (2.4): weights (blue), biases (orange) and the batch-norm scale and shift added in section 4 (green). The first layer holds 39% of all weights.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 3 NEURON -->
+<section id="layer">
+  <h2><span class="num">3</span>The neuron, its initialization and its activation</h2>
+  <p class="lead">Each unit computes an inner product, adds a bias and applies a non-linearity. How its weights start, and which non-linearity it uses, decide whether signals and gradients survive five layers.</p>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl"><div class="ctl"><span class="lab">Layer</span><select id="layerSel"></select></div><div class="ctl"><span class="lab">Neuron</span><select id="neuronSel"></select></div></div>
+      <div class="scroll"><svg id="neuronSvg" viewBox="0 0 1000 470" role="img" aria-label="Diagram of the selected neuron"></svg></div>
+    </div>
+    <figcaption><b>Figure 3.1.</b> <span id="neuronTitle">Anatomy of one neuron</span>. Input \(i\) is multiplied by weight \(i\) (thickness ∝ \(|w_i|\)); the products and the bias are summed and passed through the activation. <span class="live-dot">live</span></figcaption>
+  </figure>
+
+  <h3><span class="num">3.1</span>The affine map</h3>
+  <div class="box def"><div class="box-h">Definition</div>
+    \[ z = \mathbf{w}^{\top}\mathbf{x} + b = \sum_{i=1}^{n_{\text{in}}} w_i x_i + b, \qquad a = \phi(z) \tag{3.1} \]
+    <p>Geometrically, \(z = 0\) is a hyperplane in input space with normal \(\mathbf{w}\); \(z\) is a signed, scaled distance from it. A ReLU unit is "on" on one side of its hyperplane and zero on the other, so a ReLU network partitions input space into polyhedral regions and is linear within each one.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>One neuron works like a loan officer with a scorecard: each factor (income, debt, history) is multiplied by how much it matters, the results are added to a baseline score (the bias), and the total \(z\) is turned into a decision by the activation. The live box below does exactly this sum for the patient selected at the top of the page.</p></div>
+  <div class="box live"><div class="box-h">Live computation for the selected neuron</div><div class="texlive" id="sumBox"></div></div>
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><svg id="waterSvg" viewBox="0 0 760 300" role="img" aria-label="Waterfall chart of the weighted sum"></svg></div>
+      <figcaption><b>Figure 3.2.</b> Eq. (3.1) as a waterfall: each bar adds one product \(w_i x_i\), then the bias; the violet bar is the total \(z\). <span class="live-dot">live</span></figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><svg id="heatSvg" viewBox="0 0 380 300" role="img" aria-label="Heatmap of the layer's weight matrix"></svg></div>
+      <figcaption><b>Figure 3.3.</b> The weight matrix \(W^{(l)}\): rows are neurons, columns inputs. The outlined row is the neuron above.</figcaption>
+    </figure>
+  </div>
+  <details><summary>Input and weight table</summary><div class="scroll"><table class="t" id="inTable"></table></div></details>
+
+  <h3><span class="num">3.2</span>Initialization: fan-in, fan-out and the variance argument</h3>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Training starts from the initial weights. If their scale is wrong, each layer multiplies the signal's variance by a constant factor, so after five layers activations either vanish or explode, and so do gradients. If all weights are equal, every unit in a layer computes the same thing and receives the same gradient, so the units can never become different (the symmetry problem).</p></div>
+  <div class="box deriv"><div class="box-h">Derivation · He and Xavier initialization</div>
+    <p>Assume weights are i.i.d. with mean 0 and variance \(\sigma_w^2\), independent of the inputs. The fan-in \(n_{\text{in}}\) is the number of inputs to a unit; the fan-out \(n_{\text{out}}\) is the number of units it feeds. From (3.1),</p>
+    \[ \operatorname{Var}(z) = \sum_{i=1}^{n_{\text{in}}} \operatorname{Var}(w_i x_i) = n_{\text{in}}\, \sigma_w^2\, \mathbb{E}[x^2] \tag{3.2} \]
+    <p>For ReLU with \(z\) symmetric about zero, half the mass is cut off, so \(\mathbb{E}[a^2] = \tfrac12 \operatorname{Var}(z)\). Requiring the second moment to be preserved from layer to layer, \(\mathbb{E}[a^{(l)2}] = \mathbb{E}[a^{(l-1)2}]\), gives</p>
+    \[ \tfrac12\, n_{\text{in}}\, \sigma_w^2 = 1 \;\Longrightarrow\; \sigma_w^2 = \frac{2}{n_{\text{in}}} \qquad \text{(He et al., 2015)} \tag{3.3} \]
+    <p>The same argument applied to the backward pass, \(\operatorname{Var}(\delta^{(l)}) = n_{\text{out}}\, \sigma_w^2\, \mathbb{E}[\phi'^2]\, \operatorname{Var}(\delta^{(l+1)})\), asks for \(\sigma_w^2 \propto 1/n_{\text{out}}\). For activations that are roughly linear near zero (tanh, sigmoid), Glorot and Bengio (2010) compromise between the two:</p>
+    \[ \sigma_w^2 = \frac{2}{n_{\text{in}} + n_{\text{out}}} \tag{3.4} \]</div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Initialization sets the volume knob of each layer before learning starts. Fan-in is how many voices speak into one neuron. If each voice is loud, their sum is deafening; if each is a whisper, the sum is silence, and after five layers the message is lost, like a game of telephone. He initialization sets the volume to \(\sqrt{2/\text{fan-in}}\) so the signal arrives at the last layer at the same loudness it started. The 2 compensates for ReLU silencing about half the neurons. And the weights must be random: if all start equal, all neurons learn the same thing.</p>
+    <p class="uc"><b>Applied</b>PyTorch and Keras already initialise sensibly, so you rarely set this by hand. Check it when a model's loss does not move at all from the first epoch, or when you build custom layers.</p></div>
+  <div class="box live"><div class="box-h">Live values for the selected layer</div><div class="texlive" id="initBox"></div></div>
+  <div class="figrow wide r3">
+    <figure>
+      <div class="fig-body"><svg id="fanSvg" viewBox="0 0 360 260" role="img" aria-label="Fan-in and fan-out of a layer"></svg></div>
+      <figcaption><b>Figure 3.4.</b> <span id="fanCap">Fan-in and fan-out</span></figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><svg id="wHist" viewBox="0 0 420 260" role="img" aria-label="Histogram of this layer's weights"></svg></div>
+      <figcaption><b>Figure 3.5.</b> The layer's weights (bars) against the distribution they were drawn from (dashed). Switch the weights to "after 15 epochs" to see training move them.</figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><svg id="propSvg" viewBox="0 0 420 260" role="img" aria-label="Spread of activations by depth for each initialization"></svg></div>
+      <figcaption><b>Figure 3.6.</b> Eq. (3.2) in action: activation spread through a 12-layer, 64-unit network fed the training patients. Too-small weights shrink the signal by orders of magnitude; He and Xavier hold it steady. <span class="live-dot run">run</span></figcaption>
+    </figure>
+  </div>
+
+  <h3><span class="num">3.3</span>Activation functions</h3>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Without a non-linearity, depth adds nothing: composing affine maps gives another affine map,</p>
+    \[ W^{(2)}\bigl(W^{(1)}\mathbf{x} + \mathbf{b}^{(1)}\bigr) + \mathbf{b}^{(2)} = \underbrace{W^{(2)}W^{(1)}}_{W}\,\mathbf{x} + \underbrace{W^{(2)}\mathbf{b}^{(1)} + \mathbf{b}^{(2)}}_{\mathbf{b}} \tag{3.5} \]
+    <p>so a 5-layer linear network is just logistic regression. The activation's derivative also matters, because backpropagation multiplies by \(\phi'(z)\) at every layer (section 7).</p></div>
+  <div class="box def"><div class="box-h">Definitions and derivatives</div>
+    \[ \text{ReLU}(z) = \max(0, z), \quad \text{ReLU}'(z) = \mathbb{1}[z \gt 0]; \qquad \text{Leaky}(z) = \max(\alpha z, z),\; \alpha = 0.1 \tag{3.6} \]
+    \[ \sigma(z) = \frac{1}{1 + e^{-z}}, \quad \sigma'(z) = \sigma(z)\bigl(1 - \sigma(z)\bigr) \le \tfrac14; \qquad \tanh'(z) = 1 - \tanh^2(z) \le 1 \tag{3.7} \]
+    <p>Sigmoid and tanh saturate: for large \(|z|\) their derivatives are nearly zero. ReLU has derivative exactly 1 when active, which keeps gradients alive, but a unit whose \(z\) is negative for every input never updates again (a "dead" ReLU). Leaky ReLU keeps a small slope to prevent this.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>The activation is the neuron's decision rule. ReLU says "if the evidence is negative, stay quiet; if positive, pass it on". This small bend is what lets stacked layers learn curved boundaries; without it, five layers collapse into one big linear regression (eq. 3.5). Sigmoid squashes any number into a probability between 0 and 1, which is perfect for the final answer but slows learning inside the network because it flattens out at both ends.</p>
+    <p class="uc"><b>Applied</b>ReLU (or GELU) in hidden layers. For the output: sigmoid for yes/no (disease, fraud, churn), softmax for one-of-\(K\) (product category), and no activation for numbers (price, demand).</p></div>
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><svg id="actGrid" viewBox="0 0 900 240" role="img" aria-label="Four activation functions and their derivatives"></svg></div>
+      <figcaption><b>Figure 3.7.</b> \(\phi\) (blue) and \(\phi'\) (dashed orange). The highlighted panel is in use; the violet dot is the selected neuron. <span class="live-dot">live</span></figcaption>
+    </figure>
+    <div class="box live" style="margin:0"><div class="box-h">Live activation</div><div class="texlive" id="actBox"></div></div>
+  </div>
+  <figure class="wide">
+    <div class="fig-body"><svg id="layerOut" viewBox="0 0 1100 220" role="img" aria-label="Outputs of every neuron in the layer"></svg></div>
+    <figcaption><b>Figure 3.8.</b> <span id="layerOutTitle">Layer output</span>. This vector is the input \(\mathbf{a}^{(l)}\) to the next layer. <span class="live-dot">live</span></figcaption>
+  </figure>
+</section>
+
+<!-- 4 BATCH NORM -->
+<section id="batchnorm">
+  <h2><span class="num">4</span>Batch normalization</h2>
+  <p class="lead">Batch normalization standardises each unit's pre-activations over the mini-batch, then lets the network learn the scale and shift it actually wants.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Ioffe and Szegedy (2015) introduced it to reduce "internal covariate shift": the distribution of a layer's inputs changes as earlier layers train. Later analyses attribute most of its benefit to a smoother, better-conditioned loss surface (Santurkar et al., 2018) and to the scale invariance in eq. (4.5), which together allow larger learning rates and make training less sensitive to initialization.</p></div>
+  <div class="box def"><div class="box-h">Definition · training mode</div>
+    <p>For one unit over a mini-batch \(z_1, \dots, z_m\):</p>
+    \[ \mu_B = \frac1m \sum_{k=1}^{m} z_k, \qquad \sigma_B^2 = \frac1m \sum_{k=1}^{m} (z_k - \mu_B)^2 \tag{4.1} \]
+    \[ \hat z_k = \frac{z_k - \mu_B}{\sqrt{\sigma_B^2 + \varepsilon}}, \qquad y_k = \gamma\, \hat z_k + \beta \tag{4.2} \]
+    <p>At inference a single patient has no batch, so running averages collected during training replace the batch statistics (PyTorch uses \(\rho = 0.9\)):</p>
+    \[ \bar\mu \leftarrow \rho\, \bar\mu + (1 - \rho)\, \mu_B, \qquad \bar\sigma^2 \leftarrow \rho\, \bar\sigma^2 + (1 - \rho)\, \sigma_B^2 \tag{4.3} \]</div>
+  <div class="box deriv"><div class="box-h">Derivation · backward pass and scale invariance</div>
+    <p>Every \(z_k\) affects every \(\hat z_j\) through \(\mu_B\) and \(\sigma_B\). Writing \(g_k = \partial\mathcal{L}/\partial y_k\), the chain rule gives</p>
+    \[ \frac{\partial \mathcal{L}}{\partial z_k} = \frac{\gamma}{m\sqrt{\sigma_B^2 + \varepsilon}} \Bigl( m\, g_k - \sum_{j} g_j - \hat z_k \sum_{j} g_j\, \hat z_j \Bigr), \qquad \frac{\partial \mathcal{L}}{\partial \gamma} = \sum_k g_k \hat z_k, \qquad \frac{\partial \mathcal{L}}{\partial \beta} = \sum_k g_k \tag{4.4} \]
+    <p>The gradient is centred and decorrelated from \(\hat z\): it carries no component that would merely shift or rescale the batch. And because normalisation removes scale,</p>
+    \[ \text{BN}\bigl(\alpha W \mathbf{a}\bigr) = \text{BN}\bigl(W \mathbf{a}\bigr) \;\;\forall \alpha \gt 0 \quad\Longrightarrow\quad \nabla_{\alpha W}\, \mathcal{L} = \tfrac{1}{\alpha}\, \nabla_{W} \mathcal{L} \tag{4.5} \]
+    <p>so larger weights automatically receive smaller gradients, a built-in stabiliser. The engine on this page implements (4.4) and was checked against finite differences.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Batch norm is grading on a curve. For each neuron, it takes the scores of the current batch of patients and rescales them to average 0 and spread 1, so the next layer always receives inputs in a familiar range, however much the earlier layers have changed. The learned \(\gamma\) and \(\beta\) then let the network choose its own curve if centred scores are not ideal.</p>
+    <p class="uc"><b>Applied</b>Batch norm lets deeper networks train faster and with larger learning rates. Its most common bug: forgetting <code>model.eval()</code> before predicting, so a single customer's prediction gets normalised by statistics of whatever batch it happens to be in.</p></div>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl">
+        <div class="ctl"><span class="lab">Layer</span><select id="bnLayerSel"></select></div>
+        <div class="ctl"><span class="lab">Neuron</span><select id="bnNeuronSel"></select></div>
+        <div class="ctl"><span class="lab">γ</span><input type="range" id="bnGamma" min="0.2" max="3" step="0.1" value="1"><span class="val" id="bnGammaV">1.0</span></div>
+        <div class="ctl"><span class="lab">β</span><input type="range" id="bnBeta" min="-2" max="2" step="0.1" value="0"><span class="val" id="bnBetaV">0.0</span></div>
+      </div>
+      <div class="grid2"><svg id="bnBefore" viewBox="0 0 460 200" role="img" aria-label="Before batch norm"></svg><svg id="bnAfter" viewBox="0 0 460 200" role="img" aria-label="After batch norm"></svg></div>
+      <div class="texlive" id="bnMath"></div>
+    </div>
+    <figcaption><b>Figure 4.1.</b> One unit over a mini-batch of 32 (the selected patient plus 31 training patients). Left: raw \(z\); right: \(\gamma\hat z + \beta\). The shaded band is mean ± 1 sd; the violet marker is the selected patient. <span class="live-dot">live</span></figcaption>
+  </figure>
+  <figure class="wide">
+    <div class="fig-body"><svg id="bnLayer" viewBox="0 0 1100 220" role="img" aria-label="Per-unit mean and spread before and after batch norm"></svg></div>
+    <figcaption><b>Figure 4.2.</b> Every unit of the layer, mean ± 1 sd before (grey) and after (blue). After normalisation every unit has mean β and spread γ, regardless of what the earlier layers are doing.</figcaption>
+  </figure>
+  <div class="box prac"><div class="box-h">In practice</div>
+    <ul>
+      <li>Call <code>model.eval()</code> before validation so that eq. (4.3) is used; forgetting it is a common source of "great training, poor test" results.</li>
+      <li>Batch statistics are noisy for small batches (below about 16). Layer normalization, which normalises across units of one example, is used in Transformers and recurrent networks instead.</li>
+      <li>The bias \(\mathbf{b}^{(l)}\) of a layer followed by batch norm is redundant, since \(\beta\) absorbs it.</li>
+    </ul></div>
+</section>
+
+<!-- 5 DROPOUT -->
+<section id="dropout">
+  <h2><span class="num">5</span>Dropout</h2>
+  <p class="lead">During training, each hidden unit is removed at random with probability \(p\). Every step therefore trains a different thinned sub-network, all sharing the same weights.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>With 573 parameters and 242 patients, the network can memorise. Dropout prevents units from co-adapting, each one relying on specific partners, and it approximates averaging an ensemble of \(2^{40}\) thinned networks (one per subset of the 40 hidden units) at the cost of training one (Srivastava et al., 2014).</p></div>
+  <div class="box def"><div class="box-h">Definition · inverted dropout</div>
+    \[ m_j \sim \text{Bernoulli}(1 - p), \qquad \tilde a_j = \frac{m_j\, a_j}{1 - p}, \qquad \mathbb{E}[\tilde a_j] = a_j \tag{5.1} \]
+    <p>Scaling the survivors by \(1/(1-p)\) during training keeps every expectation unchanged, so at test time the full network is used as is.</p></div>
+  <div class="box deriv"><div class="box-h">Derivation · dropout as data-dependent regularization</div>
+    <p>For a linear unit fed by dropped-out inputs, \(z = \sum_i w_i \tilde a_i\), the mean is unchanged but noise is injected:</p>
+    \[ \mathbb{E}[z] = \mathbf{w}^{\top}\mathbf{a}, \qquad \operatorname{Var}(z) = \frac{p}{1 - p} \sum_i w_i^2\, a_i^2 \tag{5.2} \]
+    <p>The expected loss therefore gains a penalty that grows with \(w_i^2 a_i^2\): an L2 penalty weighted by how strongly each input is used (Wager, Wang and Liang, 2013). Keeping dropout on at test time and averaging \(T\) passes gives a Monte Carlo estimate of the prediction and its uncertainty (Gal and Ghahramani, 2016):</p>
+    \[ \hat y_{\text{MC}} = \frac1T \sum_{t=1}^{T} f\bigl(\mathbf{x}; \mathbf{m}^{(t)}\bigr), \qquad \hat s^2 = \frac1T \sum_{t=1}^{T} \bigl(f(\mathbf{x}; \mathbf{m}^{(t)}) - \hat y_{\text{MC}}\bigr)^2 \tag{5.3} \]</div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Dropout is a team that practises with random players sitting out. No one can lean on a single star teammate, so everyone learns to contribute, and the team plays better on match day when all players are present. Running the network many times with different players out (eq. 5.3) is like asking 300 slightly different experts: if they agree, trust the answer; if they disagree, the case is uncertain.</p>
+    <p class="uc"><b>Applied</b>In medical triage or fraud review, route the cases where the 300 predictions spread widely to a human reviewer. This is a cheap way to add an "I'm not sure" signal to an existing network.</p></div>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl">
+        <div class="ctl"><span class="lab">Layer</span><select id="dropLayerSel"></select></div>
+        <div class="ctl"><span class="lab">p</span><input type="range" id="dropP" min="0" max="0.8" step="0.05" value="0.3"><span class="val" id="dropPV">0.30</span></div>
+        <button class="btn" id="dropResample">New mask</button>
+        <button class="btn" id="dropMode" aria-pressed="true">Mode: training</button>
+      </div>
+      <div class="grid2" style="grid-template-columns:minmax(0,7fr) minmax(0,5fr)"><svg id="dropNetSvg" viewBox="0 0 700 330" role="img" aria-label="Thinned network"></svg><div><svg id="dropBars" viewBox="0 0 460 220" role="img" aria-label="Unit outputs before and after dropout"></svg><div class="texlive" id="dropMath"></div></div></div>
+    </div>
+    <figcaption><b>Figure 5.1.</b> Left: the thinned network for one training step; crossed units are dropped. Right: the selected layer before (grey) and after (blue) eq. (5.1). <span class="live-dot">live</span></figcaption>
+  </figure>
+  <figure class="wide">
+    <div class="fig-body"><svg id="mcSvg" viewBox="0 0 1100 230" role="img" aria-label="Distribution of predictions under random masks"></svg></div>
+    <figcaption><b>Figure 5.2.</b> Eq. (5.3) for the selected patient: 300 thinned networks give 300 predictions. Their average (dashed) is close to the full network's output (violet), and their spread is a rough uncertainty estimate. <span class="live-dot">live</span></figcaption>
+  </figure>
+  <div class="box prac"><div class="box-h">In practice</div>
+    <p>\(p\) between 0.1 and 0.5 for hidden layers; call <code>model.eval()</code> to switch dropout off. Combining dropout and batch norm in the same block can shift the variance between training and test (Li et al., 2019); placing dropout after the activation, as here, and using modest \(p\) keeps the effect small.</p></div>
+</section>
+
+<!-- 6 LOSS -->
+<section id="loss">
+  <h2><span class="num">6</span>Likelihood and loss</h2>
+  <p class="lead">The output unit returns \(\hat y = \sigma(z^{(5)})\), read as \(P(y = 1 \mid \mathbf{x})\). The loss follows from asking which parameters make the observed labels most probable.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>The loss is the only thing the optimizer sees. A loss derived from the likelihood gives calibrated probabilities and, combined with the sigmoid, a gradient that is large exactly when the model is confidently wrong.</p></div>
+  <div class="box deriv"><div class="box-h">Derivation · binary cross-entropy from the Bernoulli likelihood</div>
+    \[ P(y \mid \mathbf{x}; \boldsymbol\theta) = \hat y^{\,y}\, (1 - \hat y)^{1 - y} \tag{6.1} \]
+    \[ \mathcal{L}(\hat y, y) = -\log P(y \mid \mathbf{x}; \boldsymbol\theta) = -\bigl[\, y \log \hat y + (1 - y) \log(1 - \hat y) \,\bigr] \tag{6.2} \]
+    <p>Minimising the average of (6.2) over the training set is maximum-likelihood estimation. Its derivative with respect to the logit \(z = z^{(5)}\) simplifies remarkably:</p>
+    \[ \frac{\partial \mathcal{L}}{\partial z} = \underbrace{\Bigl(-\frac{y}{\hat y} + \frac{1 - y}{1 - \hat y}\Bigr)}_{\partial \mathcal{L} / \partial \hat y}\; \underbrace{\hat y\, (1 - \hat y)}_{\sigma'(z)} = \hat y - y \tag{6.3} \]</div>
+  <div class="box deriv"><div class="box-h">Why not mean squared error?</div>
+    <p>With \(\mathcal{L} = \tfrac12 (\hat y - y)^2\) and a sigmoid output, the factor \(\sigma'(z)\) no longer cancels:</p>
+    \[ \frac{\partial \mathcal{L}_{\text{MSE}}}{\partial z} = (\hat y - y)\, \hat y\, (1 - \hat y) \tag{6.4} \]
+    <p>If the model is confidently wrong (\(\hat y \to 0\) while \(y = 1\)), this gradient goes to zero and learning stalls exactly when it is needed most. Eq. (6.3) stays at \(-1\).</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>The loss is the grade the model gets for each answer. Cross-entropy is a strict teacher: answering "10% chance of disease" for a sick patient costs a lot, and "1%" costs far more. It punishes confident mistakes hardest, like a forecaster who said 99% sunny on the day of a storm. Its gradient, \(\hat y - y\), is simply "how far off was the probability", and that number starts the whole backward pass.</p>
+    <p class="uc"><b>Applied</b>Match the loss to the output: cross-entropy for classification, mean squared or absolute error for numbers. For rare positives (fraud, rare disease), add a class weight such as <code>pos_weight</code> so missing a positive costs more than a false alarm.</p></div>
+  <div class="box live"><div class="box-h">Live loss for the selected patient</div><div class="kpis" id="lossKpis"></div><div class="texlive" id="lossMath"></div></div>
+  <figure class="wide">
+    <div class="fig-body"><svg id="lossPlot" viewBox="0 0 1000 260" role="img" aria-label="Binary cross-entropy as a function of the prediction"></svg>
+      <div class="legend"><span><i style="background:var(--neg)"></i>\(y = 1\): \(-\log \hat y\)</span><span><i style="background:var(--fwd)"></i>\(y = 0\): \(-\log(1 - \hat y)\)</span></div></div>
+    <figcaption><b>Figure 6.1.</b> Eq. (6.2) for both labels. A confident wrong answer costs far more than a hesitant one; the violet dot is the selected patient. <span class="live-dot">live</span></figcaption>
+  </figure>
+  <div class="box def"><div class="box-h">Convexity, locally</div>
+    <p>With the hidden layers frozen, \(\hat y = \sigma(\mathbf{w}^{(5)\top}\mathbf{a}^{(4)} + b^{(5)})\) is logistic regression on the learned features \(\mathbf{a}^{(4)}\), and its training loss is convex in \(\mathbf{w}^{(5)}\). Figures 6.2 and 6.3 slice exactly this surface. The full loss, as a function of all 573 parameters, is not convex.</p></div>
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><div class="fig-ctl"><button class="btn primary" id="rollGD">▶ Roll gradient descent</button><span class="epoch" id="gdLbl"></span></div><div id="loss3d" class="plot3d" role="img" aria-label="3D training loss surface over two output weights"></div></div>
+      <figcaption><b>Figure 6.2.</b> <span id="loss3dCap">The training loss as two output weights vary.</span> The orange ball runs gradient descent from a poor starting point. Drag to rotate. <span class="live-dot run">run</span></figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><div id="loss2d" class="plot2d" role="img" aria-label="Contour map of the loss surface"></div></div>
+      <figcaption><b>Figure 6.3.</b> The same surface from above. The black segment is the negative gradient at the current weights; gradient descent moves perpendicular to the contours.</figcaption>
+    </figure>
+  </div>
+  <div class="box prac"><div class="box-h">In practice</div>
+    <p>Compute the loss from the logit, not from \(\hat y\): <code>BCEWithLogitsLoss</code> evaluates \(\mathcal{L} = \max(z, 0) - z y + \log(1 + e^{-|z|})\), which never takes the log of a number that has underflowed to zero.</p></div>
+</section>
+
+<!-- 7 BACKPROP -->
+<section id="backprop">
+  <h2><span class="num">7</span>Backpropagation</h2>
+  <p class="lead">Backpropagation computes \(\partial \mathcal{L}/\partial \theta\) for all 573 parameters in one backward sweep, by applying the chain rule from the loss towards the inputs and reusing intermediate results.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Estimating each derivative by finite differences would cost one extra forward pass per parameter, 573 passes per step here and billions for large models. Reverse-mode differentiation obtains all of them for a small constant multiple of one forward pass (the "cheap gradient principle"; Linnainmaa 1970, Baur and Strassen 1983). That cost difference is what makes training deep networks feasible.</p></div>
+  <h3><span class="num">7.1</span>Local derivatives on a computational graph</h3>
+  <p>Every computation is a graph of primitive operations, each with a simple local derivative. Multiplication swaps its inputs; addition passes the gradient through unchanged; the chain rule multiplies local derivatives along each path:</p>
+  \[ f = x\,y:\;\; \frac{\partial f}{\partial x} = y,\;\; \frac{\partial f}{\partial y} = x \qquad\quad q = x + y:\;\; \frac{\partial q}{\partial x} = \frac{\partial q}{\partial y} = 1 \qquad\quad \frac{\partial f}{\partial x} = \frac{\partial f}{\partial q}\,\frac{\partial q}{\partial x} \tag{7.1} \]
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl">
+        <div class="ctl"><span class="lab">\(x\)</span><input type="range" id="gx" min="-4" max="4" step="0.5" value="-2"><span class="val" id="gxV"></span></div>
+        <div class="ctl"><span class="lab">\(y\)</span><input type="range" id="gy" min="-4" max="4" step="0.5" value="4"><span class="val" id="gyV"></span></div>
+        <div class="ctl"><span class="lab">\(z\)</span><input type="range" id="gz" min="-4" max="4" step="0.5" value="-4"><span class="val" id="gzV"></span></div>
+      </div>
+      <div class="grid2" style="grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:center"><div class="scroll"><svg id="gateSvg" viewBox="0 0 900 260" role="img" aria-label="Computational graph"></svg></div><div class="texlive" id="gateMath"></div></div>
+    </div>
+    <figcaption><b>Figure 7.1.</b> \(q = x + y\), \(f = q\,z\). Blue numbers are forward values, orange numbers are \(\partial f/\partial(\cdot)\) obtained by eq. (7.1). <span class="live-dot toy">toy</span></figcaption>
+  </figure>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Every complicated calculation is built from small steps, and each step knows its own simple rule for passing blame backwards. For multiplication, the blame for one input equals the other input: if revenue is price × quantity, selling one extra unit adds exactly one price to revenue. For addition, the blame is passed through unchanged. The chain rule multiplies these small rules along the path.</p></div>
+
+  <h3><span class="num">7.2</span>The backpropagation equations</h3>
+  <div class="box def"><div class="box-h">Definition · error signals and gradients</div>
+    <p>Let \(\boldsymbol\delta^{(l)} = \partial\mathcal{L}/\partial\mathbf{z}^{(l)}\). Using \(\partial \mathbf{z}^{(l+1)}/\partial \mathbf{a}^{(l)} = W^{(l+1)}\) and \(\partial \mathbf{a}^{(l)}/\partial \mathbf{z}^{(l)} = \operatorname{diag}\bigl(\phi'(\mathbf{z}^{(l)})\bigr)\):</p>
+    \[ \delta^{(5)} = \hat y - y \tag{7.2} \]
+    \[ \boldsymbol\delta^{(l)} = \bigl(W^{(l+1)\top}\, \boldsymbol\delta^{(l+1)}\bigr) \odot \phi'\bigl(\mathbf{z}^{(l)}\bigr), \qquad l = 4, \dots, 1 \tag{7.3} \]
+    \[ \frac{\partial \mathcal{L}}{\partial W^{(l)}} = \boldsymbol\delta^{(l)}\, \mathbf{a}^{(l-1)\top}, \qquad \frac{\partial \mathcal{L}}{\partial \mathbf{b}^{(l)}} = \boldsymbol\delta^{(l)} \tag{7.4} \]
+    <p>For a mini-batch, the gradients (7.4) are averaged over its examples. Each layer reuses \(\mathbf{a}^{(l-1)}\) and \(\mathbf{z}^{(l)}\) cached during the forward pass.</p></div>
+  <div class="box deriv"><div class="box-h">Vanishing and exploding gradients</div>
+    <p>Unrolling (7.3) from the output to layer 1,</p>
+    \[ \boldsymbol\delta^{(1)} = \Bigl(\prod_{l=1}^{4} \operatorname{diag}\bigl(\phi'(\mathbf{z}^{(l)})\bigr)\, W^{(l+1)\top}\Bigr)\, \delta^{(5)}, \qquad \bigl\lVert \boldsymbol\delta^{(1)} \bigr\rVert \le \prod_{l=1}^{4} \Bigl(\max|\phi'| \cdot \lVert W^{(l+1)} \rVert\Bigr)\, |\delta^{(5)}| \tag{7.5} \]
+    <p>A product of many factors smaller than one vanishes; larger than one, it explodes. With sigmoid, \(\max|\phi'| = \tfrac14\), so each layer can shrink the error signal fourfold. ReLU (\(\phi' \in \{0, 1\}\)) together with He initialization keeps the factors near one.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Backpropagation is a post-mortem memo travelling back through the organisation chart. The output says "we were off by \(\hat y - y\)". Each layer forwards the blame to the people who reported to it, in proportion to how much it relied on them (the weights) and only if it was actually listening (\(\phi' \neq 0\)). Each weight's gradient is then its share of the blame times the input it received. If the memo is diluted at every level, the first layers never hear it: that is the vanishing gradient.</p>
+    <p class="uc"><b>Applied</b>If early layers of a deep model stop learning, use ReLU, He initialization and batch norm, as here; very deep models add residual (skip) connections. Frameworks compute all of this with one call, <code>loss.backward()</code>.</p></div>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl"><button class="btn primary" id="playBwd">▶ Play backward pass</button><div class="ctl"><span class="lab">Layer</span><select id="bpLayerSel"></select></div><div class="ctl"><span class="lab">Neuron</span><select id="bpNeuronSel"></select></div></div>
+      <div class="scroll"><svg id="deltaFlow" viewBox="0 0 1060 470" role="img" aria-label="Network shaded by error signal magnitude"></svg></div>
+    </div>
+    <figcaption><b>Figure 7.2.</b> Eq. (7.3) for the selected patient: units shaded by \(|\delta|\). The signal starts at the output as \(\hat y - y\); inactive ReLU units (\(z \le 0\)) pass nothing back. <span class="live-dot">live</span></figcaption>
+  </figure>
+  <div class="box live"><div class="box-h">Live δ for the selected neuron</div><div class="texlive" id="deltaBox"></div>
+    <details><summary>Upstream contributions and weight gradients</summary><div class="grid2"><div class="scroll"><table class="t" id="upTable"></table></div><div class="scroll"><table class="t" id="gradTable"></table></div></div></details></div>
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><svg id="gradBars" viewBox="0 0 760 280" role="img" aria-label="Average gradient magnitude per layer for each activation"></svg><div class="legend" id="gradLegend"></div></div>
+      <figcaption><b>Figure 7.3.</b> Eq. (7.5) measured: mean \(|\partial\mathcal{L}/\partial W^{(l)}|\) per layer for the same initial network with four activations (64 patients, log scale). Sigmoid's gradient at layer 1 is one to two orders of magnitude below ReLU's. <span class="live-dot run">run</span></figcaption>
+    </figure>
+    <figure>
+      <div class="fig-body"><svg id="gradHeat" viewBox="0 0 380 300" role="img" aria-label="Heatmap of the weight gradients"></svg></div>
+      <figcaption><b>Figure 7.4.</b> \(\partial\mathcal{L}/\partial W^{(l)} = \boldsymbol\delta^{(l)}\mathbf{a}^{(l-1)\top}\), eq. (7.4): an outer product, so each row is one neuron's \(\delta\) times the same input vector. Orange: increasing the weight increases the loss.</figcaption>
+    </figure>
+  </div>
+  <div class="box prac"><div class="box-h">In practice · gradient checking</div>
+    <p>Before trusting a hand-written backward pass, compare it with centred finite differences on a small network:</p>
+    \[ \frac{\partial \mathcal{L}}{\partial \theta_i} \approx \frac{\mathcal{L}(\boldsymbol\theta + \epsilon\, \mathbf{e}_i) - \mathcal{L}(\boldsymbol\theta - \epsilon\, \mathbf{e}_i)}{2\epsilon} \tag{7.6} \]
+    <p>The engine behind this page agrees with (7.6) to within \(10^{-9}\) for every activation, with and without batch norm and dropout.</p></div>
+</section>
+
+<!-- 8 UPDATE -->
+<section id="update">
+  <h2><span class="num">8</span>Gradient descent and the step size</h2>
+  <p class="lead">The gradient gives the direction of steepest increase; gradient descent steps the other way. The step size \(\eta\) decides whether that step helps.</p>
+  <div class="box def"><div class="box-h">Definition</div>
+    \[ \boldsymbol\theta_{t+1} = \boldsymbol\theta_t - \eta\, \nabla \mathcal{L}(\boldsymbol\theta_t) \tag{8.1} \]</div>
+  <div class="box deriv"><div class="box-h">Derivation · when does a step decrease the loss?</div>
+    <p>Write \(\mathbf{g} = \nabla\mathcal{L}(\boldsymbol\theta)\). A second-order Taylor expansion along the step gives</p>
+    \[ \mathcal{L}(\boldsymbol\theta - \eta\,\mathbf{g}) \approx \mathcal{L}(\boldsymbol\theta) - \eta\, \mathbf{g}^{\top}\mathbf{g} + \frac{\eta^2}{2}\, \mathbf{g}^{\top} H\, \mathbf{g} \tag{8.2} \]
+    <p>The first-order term always helps; the curvature term hurts if \(\eta\) is too large. The right side is minimised by, and decreases only for,</p>
+    \[ \eta^\star = \frac{\mathbf{g}^{\top}\mathbf{g}}{\mathbf{g}^{\top} H\, \mathbf{g}}, \qquad 0 \lt \eta \lt 2\eta^\star \tag{8.3} \]
+    <p>On a quadratic loss, the iteration is stable in every direction only if \(\eta \lt 2/\lambda_{\max}(H)\). The sharpest direction sets the speed limit for all the others, which is why ill-conditioning (large \(\kappa\), eq. 1.4) makes plain gradient descent slow.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Gradient descent is a hiker in thick fog trying to reach the valley floor. They cannot see the valley, only feel the slope under their feet, so they take a step downhill and feel again. The learning rate \(\eta\) is the stride length: too short and the hike takes forever; too long and they leap across the valley and end up higher on the other side. Drag the slider in Figure 8.1 past \(2\eta^\star\) to see the loss go up.</p>
+    <p class="uc"><b>Applied</b>The learning rate is the most important setting to tune. Start from the default (0.001 for Adam), and if training is unstable divide by 3; if it is slow, multiply by 3. A learning-rate schedule that lowers it over time usually helps at the end.</p></div>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl"><div class="ctl"><span class="lab">\(\eta\)</span><input type="range" id="lrUpd" min="0.01" max="2" step="0.01" value="0.1"><span class="val" id="lrUpdV">0.10</span></div><div class="kpis" id="updStats" style="margin:0"></div></div>
+      <div class="grid2"><svg id="dumbSvg" viewBox="0 0 460 340" role="img" aria-label="Each weight before and after the update"></svg><svg id="lineSearch" viewBox="0 0 460 340" role="img" aria-label="Loss along the step direction"></svg></div>
+      <p class="lab" id="updNote" style="margin:0"></p>
+    </div>
+    <figcaption><b>Figure 8.1.</b> Left: the weights of the neuron selected in section 7, before (grey) and after (orange) one step of eq. (8.1) on the selected patient. Right: eq. (8.2) measured: the patient's loss as every parameter moves \(t\) times its negative gradient. The minimum of this curve is \(\eta^\star\); past \(2\eta^\star\) the step makes things worse. <span class="live-dot">live</span></figcaption>
+  </figure>
+  <details><summary>Update table</summary><div class="scroll"><table class="t" id="updTable"></table></div></details>
+</section>
+
+<!-- 9 OPTIMIZERS -->
+<section id="optimizers">
+  <h2><span class="num">9</span>Optimizers</h2>
+  <p class="lead">Real loss surfaces are ill-conditioned, flat in places and full of saddle points, and real gradients are noisy estimates. Each optimizer below fixes one of these problems.</p>
+  <h3><span class="num">9.1</span>Stochastic gradients and batch size</h3>
+  <div class="box def"><div class="box-h">Definition</div>
+    \[ \hat{\mathbf{g}} = \frac{1}{|B|} \sum_{k \in B} \nabla_{\boldsymbol\theta}\, \mathcal{L}_k, \qquad \mathbb{E}[\hat{\mathbf{g}}] = \nabla \hat R, \qquad \operatorname{Cov}(\hat{\mathbf{g}}) \approx \frac{\Sigma}{|B|} \tag{9.1} \]
+    <p>A mini-batch gradient is unbiased, and its noise shrinks as \(1/|B|\). Batch gradient descent uses all \(N\) examples (one exact step per epoch); SGD uses one (\(N\) noisy steps); mini-batches trade between the two and fill a GPU efficiently. Moderate noise also helps escape saddle points (Ge et al., 2015; Jin et al., 2017).</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Batch gradient descent polls the whole country before every decision: accurate but slow. SGD asks one random person: fast but noisy. A mini-batch surveys 32 people: a good estimate at a fraction of the cost. The noise is not all bad; it jostles the model out of flat spots where an exact method would stall.</p>
+    <p class="uc"><b>Applied</b>Batch sizes of 32–256 are standard for tabular data. Larger batches use GPUs better but often need a larger learning rate to match.</p></div>
+  <div class="figrow wide r73">
+    <figure>
+      <div class="fig-body"><svg id="batchCurve" viewBox="0 0 700 300" role="img" aria-label="Training loss per epoch for three batch sizes"></svg>
+        <div class="legend"><span><i style="background:var(--c1)"></i>batch GD, \(|B| = 242\)</span><span><i style="background:var(--bwd)"></i>SGD, \(|B| = 1\)</span><span><i style="background:var(--fwd)"></i>mini-batch, \(|B| = 32\)</span></div></div>
+      <figcaption><b>Figure 9.1.</b> The real network trained with plain SGD at \(\eta = 0.05\) for 20 epochs. More updates per epoch means faster progress per epoch; a single example per step is the noisiest. <span class="live-dot run">run</span></figcaption>
+    </figure>
+    <figure><div class="fig-body"><div class="scroll"><table class="t" id="batchTable"></table></div></div><figcaption><b>Table 9.1.</b> Updates per epoch on the 242 training patients.</figcaption></figure>
+  </div>
+
+  <h3><span class="num">9.2</span>Momentum and Nesterov</h3>
+  <div class="box def"><div class="box-h">Definition · heavy ball (Polyak, 1964) and Nesterov (1983)</div>
+    \[ \mathbf{v}_{t+1} = \beta\, \mathbf{v}_t + \mathbf{g}_t, \qquad \boldsymbol\theta_{t+1} = \boldsymbol\theta_t - \eta\, \mathbf{v}_{t+1} \qquad\Longrightarrow\qquad \mathbf{v}_{t+1} = \sum_{k=0}^{t} \beta^{\,t-k}\, \mathbf{g}_k \tag{9.2} \]
+    <p>The velocity is an exponentially weighted sum of past gradients. Components that keep their sign accumulate, with effective step \(\eta/(1-\beta)\) (ten times larger at \(\beta = 0.9\)); components that alternate cancel. Nesterov's variant evaluates the gradient at the look-ahead point \(\boldsymbol\theta_t - \eta\beta\mathbf{v}_t\). On a quadratic with condition number \(\kappa\), tuned gradient descent and heavy-ball momentum contract the error per step by</p>
+    \[ \rho_{\text{GD}} = \frac{\kappa - 1}{\kappa + 1}, \qquad \rho_{\text{momentum}} = \frac{\sqrt\kappa - 1}{\sqrt\kappa + 1} \tag{9.3} \]
+    <p>so for \(\kappa = 100\), momentum needs about ten times fewer steps.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Momentum turns the hiker into a heavy ball. A ball rolling down a valley builds up speed in the consistent downhill direction and smooths out the side-to-side wobble, and its speed carries it over small bumps and through flat stretches where a hiker would stop. \(\beta = 0.9\) means the ball remembers roughly its last ten steps.</p></div>
+
+  <h3><span class="num">9.3</span>Adaptive methods: RMSprop and Adam</h3>
+  <div class="box def"><div class="box-h">Definition · per-coordinate step sizes</div>
+    \[ \mathbf{s}_t = \beta_2\, \mathbf{s}_{t-1} + (1 - \beta_2)\, \mathbf{g}_t^{2}, \qquad \boldsymbol\theta_{t+1} = \boldsymbol\theta_t - \frac{\eta\, \mathbf{g}_t}{\sqrt{\mathbf{s}_t} + \epsilon} \qquad \text{(RMSprop)} \tag{9.4} \]
+    \[ \begin{aligned} \mathbf{m}_t &= \beta_1 \mathbf{m}_{t-1} + (1 - \beta_1)\, \mathbf{g}_t, \qquad \hat{\mathbf{m}}_t = \frac{\mathbf{m}_t}{1 - \beta_1^{\,t}}, \qquad \hat{\mathbf{s}}_t = \frac{\mathbf{s}_t}{1 - \beta_2^{\,t}} \\ \boldsymbol\theta_{t+1} &= \boldsymbol\theta_t - \eta\, \frac{\hat{\mathbf{m}}_t}{\sqrt{\hat{\mathbf{s}}_t} + \epsilon} \qquad \text{(Adam)} \end{aligned} \tag{9.5} \]</div>
+  <div class="box deriv"><div class="box-h">Derivation · Adam's bias correction</div>
+    <p>With \(\mathbf{m}_0 = \mathbf{0}\), unrolling the recursion and assuming stationary gradients,</p>
+    \[ \mathbf{m}_t = (1 - \beta_1) \sum_{k=1}^{t} \beta_1^{\,t-k}\, \mathbf{g}_k \;\Longrightarrow\; \mathbb{E}[\mathbf{m}_t] = (1 - \beta_1) \frac{1 - \beta_1^{\,t}}{1 - \beta_1}\, \mathbb{E}[\mathbf{g}] = \bigl(1 - \beta_1^{\,t}\bigr)\, \mathbb{E}[\mathbf{g}] \tag{9.6} \]
+    <p>The running mean is biased toward zero early on, so it is divided by \(1 - \beta_1^{\,t}\) (Kingma and Ba, 2015). On the first step \(\hat{\mathbf{m}}_1 = \mathbf{g}_1\) and \(\hat{\mathbf{s}}_1 = \mathbf{g}_1^2\), so every coordinate moves by about \(\eta\,\operatorname{sign}(g)\), regardless of how small the gradient is. That is why adaptive methods walk off plateaus (Figure 9.3).</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Adam gives every one of the 573 weights its own step size. Weights whose gradients are consistently tiny get their steps enlarged; weights with large, jumpy gradients get them reduced. It is momentum plus automatic per-weight volume control, which is why it works well out of the box on most problems with little tuning.</p>
+    <p class="uc"><b>Applied</b>Adam (or AdamW, when you also use weight decay) with learning rate 0.001 is the default choice in industry. Switch to SGD with momentum only when you have time to tune and evidence it generalises better on your data.</p></div>
+
+  <h3><span class="num">9.4</span>Critical points: minima, saddles and plateaus</h3>
+  <div class="box def"><div class="box-h">Definition · classification by the Hessian</div>
+    \[ \mathcal{L}(\boldsymbol\theta + \Delta) \approx \mathcal{L}(\boldsymbol\theta) + \nabla\mathcal{L}^{\top}\Delta + \tfrac12\, \Delta^{\top} H\, \Delta, \qquad H = Q\, \Lambda\, Q^{\top} \tag{9.7} \]
+    <p>At a critical point (\(\nabla\mathcal{L} = 0\)) the eigenvalues \(\lambda_i\) of \(H\) are the curvatures along its eigenvectors: all positive is a local minimum, all negative a maximum, mixed signs a <b>saddle point</b>, and all near zero a <b>plateau</b>. In high dimensions, most critical points with high loss are saddles rather than poor minima (Dauphin et al., 2014).</p></div>
+  <div class="box deriv"><div class="box-h">Why plain gradient descent is slow at a saddle</div>
+    <p>Near a saddle, along an eigenvector with \(\lambda \lt 0\), eq. (8.1) gives \(\Delta_{t+1} = (1 + \eta|\lambda|)\, \Delta_t\):</p>
+    \[ \Delta_t = (1 + \eta\, |\lambda|)^{t}\, \Delta_0 \tag{9.8} \]
+    <p>Escape is exponential, but if the start lies almost exactly on the ridge (\(\Delta_0 \approx 0\)), many steps pass before it begins. Momentum accumulates the small consistent push; adaptive methods rescale it to size \(\eta\); gradient noise kicks the iterate off the ridge.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>A saddle point is a mountain pass: downhill in one direction, uphill in the other, and almost flat at the very middle, so a careful hiker standing there feels no slope and barely moves. A plateau is a flat desert where every direction looks the same. Large networks have many more saddles and plateaus than bad valleys, so the real danger is getting stuck on flat ground, not in the wrong valley. Pick "Saddle point" or "Plateau" in Figure 9.3 and press Race to watch plain SGD stall while Adam walks away.</p>
+    <p class="uc"><b>Applied</b>If a training curve sits flat for many epochs and then suddenly drops, the model was crossing a saddle or plateau. Do not stop training at the first flat stretch; use early stopping on validation loss with some patience instead.</p></div>
+  <figure class="wide">
+    <div class="fig-body"><div class="scroll"><svg id="critSvg" viewBox="0 0 1040 240" role="img" aria-label="Contour sketches of a minimum, a saddle point, a plateau and a maximum"></svg></div></div>
+    <figcaption><b>Figure 9.2.</b> Level sets around four kinds of critical point (black dot). Orange contours lie above the point, blue below.</figcaption>
+  </figure>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl">
+        <div class="ctl"><span class="lab">Surface</span><select id="surfSel"><option value="saddle" selected>Saddle point</option><option value="plateau">Plateau</option><option value="ravine">Ill-conditioned ravine</option><option value="twowell">Local vs global minimum</option><option value="himmel">Four minima (Himmelblau)</option><option value="banana">Curved valley (Rosenbrock)</option><option value="bumpy">Many local minima</option></select></div>
+        <div class="ctl"><span class="lab">\(\eta\)</span><select id="optLr"><option>0.005</option><option>0.01</option><option>0.02</option><option>0.05</option><option>0.1</option><option>0.2</option></select></div>
+        <div class="ctl"><span class="lab">\(\beta\)</span><input type="range" id="optBeta" min="0" max="0.99" step="0.01" value="0.9"><span class="val" id="optBetaV">0.90</span></div>
+        <div class="ctl"><span class="lab">Steps</span><input type="range" id="optSteps" min="20" max="400" step="10" value="160"><span class="val" id="optStepsV">160</span></div>
+        <button class="btn primary" id="optPlay">▶ Race</button><button class="btn" id="optReset">Reset</button><button class="btn" id="optField" aria-pressed="true">Gradient field</button><span class="epoch" id="optStepV"></span>
+      </div>
+      <div class="controls" id="optToggles"></div>
+      <p class="lab" id="surfNote" style="margin:0;color:var(--ink);font-size:13.5px;line-height:1.5"></p>
+      <div class="grid2" style="grid-template-columns:minmax(0,7fr) minmax(0,5fr)"><div id="opt3d" class="plot3d" style="height:480px" role="img" aria-label="Optimizer race on a 3D surface"></div><div id="opt2d" class="plot2d" style="height:480px" role="img" aria-label="Optimizer race on a contour map"></div></div>
+    </div>
+    <figcaption><b>Figure 9.3.</b> Five optimizers from the same start on a two-parameter surface, shown in 3D and from above (grey arrows: \(-\nabla\mathcal{L}\); stars: global minima). Each surface isolates one obstacle from sections 9.1–9.4. Drag the 3D view to rotate. <span class="live-dot toy">toy</span></figcaption>
+  </figure>
+  <div class="figrow wide">
+    <figure><div class="fig-body"><svg id="optCurve" viewBox="0 0 520 260" role="img" aria-label="Loss per step for each optimizer"></svg></div><figcaption><b>Figure 9.4.</b> Loss above the global minimum at every step (log scale).</figcaption></figure>
+    <figure><div class="fig-body"><div class="scroll"><table class="t" id="optTable"></table></div></div><figcaption><b>Table 9.2.</b> Live scoreboard for the race.</figcaption></figure>
+  </div>
+  <div class="box prac"><div class="box-h">In practice</div>
+    <ul>
+      <li>Adam or AdamW with \(\eta = 10^{-3}\) is a robust default; all three of this week's notebooks use Adam.</li>
+      <li>For convolutional networks trained for a long time, SGD with momentum 0.9 and a decaying schedule often generalises slightly better.</li>
+      <li>AdamW applies weight decay as \(\boldsymbol\theta \leftarrow \boldsymbol\theta - \eta\lambda\boldsymbol\theta\) outside the adaptive scaling (Loshchilov and Hutter, 2019), which plain Adam with an L2 term does not.</li>
+    </ul></div>
+</section>
+
+<!-- 10 TRAINING -->
+<section id="training">
+  <h2><span class="num">10</span>Training and regularization</h2>
+  <p class="lead">With 573 parameters and 242 patients, the network can fit the training set almost perfectly. Whether it generalises is an empirical question, so we answer it with a controlled experiment.</p>
+  <div class="box why"><div class="box-h">Why it matters</div>
+    <p>Low training loss is not the goal; low expected risk, eq. (1.2), is. Regularization trades a little training fit for a smaller generalization gap. The classic forms are an explicit penalty and early stopping,</p>
+    \[ \min_{\boldsymbol\theta}\; \hat R(\boldsymbol\theta) + \lambda \lVert \boldsymbol\theta \rVert_2^2, \qquad t^\star = \arg\min_{t}\; \hat R_{\text{val}}(\boldsymbol\theta_t) \tag{10.1} \]
+    <p>and batch norm and dropout act as implicit regularizers through their noise.</p></div>
+  <div class="box def"><div class="box-h">Experimental design</div>
+    <p>Four networks are trained side by side with the same initialization seed, data order, optimizer and learning rate, so the only difference is the regularizer: <b style="color:var(--c1)">plain</b>, <b style="color:var(--fwd)">batch norm</b>, <b style="color:var(--bwd)">dropout \(p = 0.3\)</b>, and <b style="color:var(--pos)">both</b>. Training loss is evaluated with dropout off so the curves are comparable.</p></div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Four students study the same book. The first memorises every answer: perfect on practice papers, shaky on the real exam. The others use study habits (batch norm, dropout) that slow memorising and force real understanding. Figure 10.1 shows the exam results epoch by epoch. When the plain network's training loss keeps falling while its test loss rises, you are watching it memorise.</p>
+    <p class="uc"><b>Applied</b>Always plot training and validation loss together. Stop training (early stopping) when validation loss stops improving, and save the weights from that epoch rather than the last one.</p></div>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl">
+        <div class="ctl"><span class="lab">Epochs</span><input type="range" id="trEpochs" min="5" max="60" step="1" value="30"><span class="val" id="trEpochsV">30</span></div>
+        <div class="ctl"><span class="lab">Batch</span><select id="trBatch"><option value="1">1 (SGD)</option><option value="8">8</option><option value="32" selected>32</option><option value="9999">all (batch GD)</option></select></div>
+        <div class="ctl"><span class="lab">Optimizer</span><select id="trOpt"><option value="sgd">SGD</option><option value="momentum">Momentum</option><option value="nesterov">Nesterov</option><option value="rmsprop">RMSprop</option><option value="adam" selected>Adam</option></select></div>
+        <div class="ctl"><span class="lab">\(\eta\)</span><select id="trLr"><option>0.001</option><option>0.003</option><option selected>0.01</option><option>0.03</option><option>0.1</option></select></div>
+        <div class="ctl"><span class="lab">Training patients</span><select id="trRows"><option value="60">60</option><option value="120">120</option><option value="242" selected>242</option></select></div>
+        <button class="btn primary" id="trRun">Train all four</button><span class="epoch" id="trEpochLbl"></span>
+      </div>
+      <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><svg id="chTrain" viewBox="0 0 360 240" role="img" aria-label="Training loss per epoch"></svg><svg id="chVal" viewBox="0 0 360 240" role="img" aria-label="Test loss per epoch"></svg><svg id="chAcc" viewBox="0 0 360 240" role="img" aria-label="Test accuracy per epoch"></svg></div>
+      <div class="legend"><span><i style="background:var(--c1)"></i>plain</span><span><i style="background:var(--fwd)"></i>+ batch norm</span><span><i style="background:var(--bwd)"></i>+ dropout</span><span><i style="background:var(--pos)"></i>+ both</span></div>
+    </div>
+    <figcaption><b>Figure 10.1.</b> Training loss, test loss and test accuracy per epoch for the four networks. The widening gap between the plain network's training and test loss is the generalization gap of eq. (1.2) opening in real time. <span class="live-dot run">run</span></figcaption>
+  </figure>
+  <div class="figrow wide r73">
+    <figure><div class="fig-body"><div class="scroll"><table class="t" id="trTable"></table></div><p class="lab" id="trSummary" style="margin:0;font-size:13.5px;line-height:1.55;color:var(--ink)"></p></div><figcaption><b>Table 10.1.</b> Final and best test results.</figcaption></figure>
+    <figure><div class="fig-body"><div class="fig-ctl"><div class="ctl"><span class="lab">Run</span><select id="gnRun"><option value="0">plain</option><option value="1">+ batch norm</option><option value="2">+ dropout</option><option value="3" selected>+ both</option></select></div></div><svg id="chGrad" viewBox="0 0 460 260" role="img" aria-label="Gradient norm per layer per epoch"></svg><div class="legend" id="gnLegend"></div></div><figcaption><b>Figure 10.2.</b> \(\lVert\partial\mathcal{L}/\partial W^{(l)}\rVert_F\) per layer, averaged over each epoch.</figcaption></figure>
+  </div>
+</section>
+
+<!-- 11 RESULTS -->
+<section id="results">
+  <h2><span class="num">11</span>Evaluation and learned representations</h2>
+  <p class="lead">A probability model is judged on held-out data, at a threshold and across all thresholds, and by what its hidden layers have learned to represent.</p>
+  <div class="box def"><div class="box-h">Definitions</div>
+    \[ \text{precision} = \frac{TP}{TP + FP}, \qquad \text{recall} = \frac{TP}{TP + FN}, \qquad F_1 = \frac{2\,\text{precision}\cdot\text{recall}}{\text{precision} + \text{recall}} \tag{11.1} \]
+    <p>The ROC curve traces the true-positive rate against the false-positive rate as the threshold sweeps from 1 to 0. The area under it has a probabilistic meaning: it is the chance that a random patient with disease is scored higher than a random patient without,</p>
+    \[ \text{AUC} = P\bigl(\hat y(\mathbf{x}^+) \gt \hat y(\mathbf{x}^-)\bigr) \tag{11.2} \]
+    <p>To look at the learned representation we project each test patient's last hidden activations \(\mathbf{a}^{(4)} \in \mathbb{R}^4\) onto the leading eigenvectors of their covariance (principal component analysis):</p>
+    \[ C = \frac1n \sum_i \bigl(\mathbf{a}_i - \bar{\mathbf{a}}\bigr)\bigl(\mathbf{a}_i - \bar{\mathbf{a}}\bigr)^{\top} = U \Lambda U^{\top}, \qquad \mathbf{p}_i = U_{:,1:k}^{\top}\bigl(\mathbf{a}_i - \bar{\mathbf{a}}\bigr) \tag{11.3} \]</div>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Precision answers "of the patients we flagged, how many were actually sick?". Recall answers "of the sick patients, how many did we catch?". AUC asks how well the model ranks people: pick one sick and one healthy patient at random; AUC is the chance the sick one gets the higher score. The PCA plots look inside the network: the last hidden layer has learned a 4-number summary of each patient in which sick and healthy patients sit apart.</p>
+    <p class="uc"><b>Applied</b>Choose the decision threshold by the cost of each mistake, not by default at 0.5. In screening, a missed patient is expensive, so lower the threshold to raise recall. In spam or fraud alerts that go to customers, false alarms annoy people, so favour precision. Then monitor these numbers after deployment, because data drifts.</p></div>
+  <figure class="wide">
+    <div class="fig-body">
+      <div class="fig-ctl"><div class="ctl"><span class="lab">Run</span><select id="resRun"><option value="0">plain</option><option value="1">+ batch norm</option><option value="2">+ dropout</option><option value="3" selected>+ both</option></select></div><span class="lab">evaluating <b id="resRunName">+ Both</b> on the 61 test patients</span></div>
+      <div class="grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))"><svg id="cmSvg" viewBox="0 0 320 260" role="img" aria-label="Confusion matrix"></svg><svg id="rocSvg" viewBox="0 0 300 260" role="img" aria-label="ROC curve"></svg><div class="scroll"><table class="t" id="repTable"></table></div></div>
+    </div>
+    <figcaption><b>Figure 11.1.</b> Confusion matrix at threshold 0.5, ROC curve with its area (eq. 11.2), and the metrics of eq. (11.1). <span class="live-dot run">run</span></figcaption>
+  </figure>
+  <div class="figrow wide r73">
+    <figure><div class="fig-body"><div id="pca3d" class="plot3d" role="img" aria-label="3D principal components of the last hidden layer"></div></div><figcaption><b>Figure 11.2.</b> Test patients in the space of the first three principal components of \(\mathbf{a}^{(4)}\) after training (red: disease, blue: none). Drag to rotate.</figcaption></figure>
+    <figure><div class="fig-body"><div class="grid2"><div><div class="lab">at initialization</div><svg id="pcaBefore" viewBox="0 0 230 230" role="img" aria-label="Representation before training"></svg></div><div><div class="lab">after training</div><svg id="pcaAfter" viewBox="0 0 230 230" role="img" aria-label="Representation after training"></svg></div></div>
+      <div class="fig-ctl" style="border:0;padding:0"><div class="ctl"><span class="lab">Weights of</span><select id="wdLayer" aria-label="Layer"></select></div></div><svg id="wdSvg" viewBox="0 0 460 220" role="img" aria-label="Weights before and after training"></svg></div>
+      <figcaption><b>Figure 11.3.</b> Top: the same projection before and after training: random weights mix the classes, trained weights separate them, so the output layer only needs a linear boundary. Bottom: the selected layer's weights before (grey) and after (orange) training.</figcaption></figure>
+  </div>
+
+  <h3><span class="num">11.1</span>The same model in PyTorch</h3>
+  <p>Every line maps to an equation above.</p>
+<div class="code"><span class="c"># (2.1)-(2.2): 13 → 16 → 12 → 8 → 4 → 1, with (4.2) batch norm and (5.1) dropout in each hidden block</span>
+def block(n_in, n_out, p=0.3):
+    return [nn.Linear(n_in, n_out), nn.BatchNorm1d(n_out), nn.ReLU(), nn.Dropout(p)]
+
+model = nn.Sequential(*block(13, 16), *block(16, 12), *block(12, 8), *block(8, 4), nn.Linear(4, 1))
+for m in model:
+    if isinstance(m, nn.Linear):
+        nn.init.kaiming_normal_(m.weight, nonlinearity="relu"); nn.init.zeros_(m.bias)   <span class="c"># (3.3)</span>
+
+criterion = nn.BCEWithLogitsLoss()                         <span class="c"># (6.2), computed from the logit</span>
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)  <span class="c"># (9.5)</span>
+
+for epoch in range(30):
+    model.train()                                          <span class="c"># (4.1)-(4.2) batch statistics, dropout on</span>
+    for xb, yb in train_loader:                            <span class="c"># (9.1) mini-batches of 32</span>
+        optimizer.zero_grad()
+        loss = criterion(model(xb).squeeze(1), yb)         <span class="c"># forward pass (2.3)</span>
+        loss.backward()                                    <span class="c"># (7.2)-(7.4)</span>
+        optimizer.step()                                   <span class="c"># (8.1) / (9.5)</span>
+    model.eval()                                           <span class="c"># (4.3) running statistics, dropout off</span></div>
+
+  <h3><span class="num">11.2</span>Summary</h3>
+  <ol>
+    <li>Training minimises empirical risk (1.1); we care about the expected risk, estimated on held-out data.</li>
+    <li>Standardising inputs improves conditioning (1.4); He and Xavier initialization preserve signal variance across layers (3.3)–(3.4).</li>
+    <li>Non-linear activations make depth meaningful (3.5); their derivatives decide whether gradients survive (7.5).</li>
+    <li>Cross-entropy is the negative Bernoulli log-likelihood, and its gradient at the logit is \(\hat y - y\) (6.3).</li>
+    <li>Backpropagation obtains every gradient in one backward sweep (7.2)–(7.4).</li>
+    <li>The step size is limited by curvature (8.3); momentum and adaptive methods address ill-conditioning, saddles and plateaus (9.2)–(9.8).</li>
+    <li>Batch norm and dropout regularise and stabilise training; their effect is measured, not assumed (Figure 10.1).</li>
+  </ol>
+  <div class="box simple"><div class="box-h">In plain words</div>
+    <p>Scale the data, pass it forward through layers of weighted sums and simple bends, score the answer with a loss, send the blame backwards with the chain rule, nudge every weight a little downhill, and repeat for many mini-batches. Batch norm and dropout keep this stable and honest; an optimizer like Adam picks sensible step sizes. Judge the result only on data the model has never seen, choose the threshold by what each kind of mistake costs, and keep checking it after deployment.</p>
+    <p class="uc"><b>Applied</b>The same eight steps, with a different input layer and output layer, are how teams build credit-risk, churn, fraud and demand models. Convolutional networks and Transformers change the layers in step 3, but steps 1–2 and 4–8 stay the same.</p></div>
+
+  <h3><span class="num">11.3</span>References</h3>
+  <ol class="refs">
+    <li>Hebb, D. O. (1949). <i>The Organization of Behavior</i>. Wiley.</li>
+    <li>Krizhevsky, A., Sutskever, I. and Hinton, G. E. (2012). ImageNet classification with deep convolutional neural networks. <i>NeurIPS</i>.</li>
+    <li>McCulloch, W. S. and Pitts, W. (1943). A logical calculus of the ideas immanent in nervous activity. <i>Bulletin of Mathematical Biophysics</i>, 5, 115–133.</li>
+    <li>Minsky, M. and Papert, S. (1969). <i>Perceptrons</i>. MIT Press.</li>
+    <li>Rosenblatt, F. (1958). The perceptron: a probabilistic model for information storage and organization in the brain. <i>Psychological Review</i>, 65, 386–408.</li>
+    <li>Cybenko, G. (1989). Approximation by superpositions of a sigmoidal function. <i>Mathematics of Control, Signals and Systems</i>, 2, 303–314.</li>
+    <li>Dauphin, Y. et al. (2014). Identifying and attacking the saddle point problem in high-dimensional non-convex optimization. <i>NeurIPS</i>.</li>
+    <li>Detrano, R. et al. (1989). International application of a new probability algorithm for the diagnosis of coronary artery disease. <i>American Journal of Cardiology</i>, 64, 304–310. (UCI Heart Disease data.)</li>
+    <li>Gal, Y. and Ghahramani, Z. (2016). Dropout as a Bayesian approximation. <i>ICML</i>.</li>
+    <li>Glorot, X. and Bengio, Y. (2010). Understanding the difficulty of training deep feedforward neural networks. <i>AISTATS</i>.</li>
+    <li>He, K. et al. (2015). Delving deep into rectifiers. <i>ICCV</i>.</li>
+    <li>Ioffe, S. and Szegedy, C. (2015). Batch normalization. <i>ICML</i>.</li>
+    <li>Kingma, D. P. and Ba, J. (2015). Adam: a method for stochastic optimization. <i>ICLR</i>.</li>
+    <li>Loshchilov, I. and Hutter, F. (2019). Decoupled weight decay regularization. <i>ICLR</i>.</li>
+    <li>Rumelhart, D. E., Hinton, G. E. and Williams, R. J. (1986). Learning representations by back-propagating errors. <i>Nature</i>, 323, 533–536.</li>
+    <li>Santurkar, S. et al. (2018). How does batch normalization help optimization? <i>NeurIPS</i>.</li>
+    <li>Srivastava, N. et al. (2014). Dropout: a simple way to prevent neural networks from overfitting. <i>JMLR</i>, 15, 1929–1958.</li>
+    <li>Wager, S., Wang, S. and Liang, P. (2013). Dropout training as adaptive regularization. <i>NeurIPS</i>.</li>
+    <li>Bathula, C. P. Deep Learning series, Parts 1–3. <i>Towards AI</i>: <a href="https://medium.com/towards-artificial-intelligence/deep-learning-series-a-brief-history-of-deep-learning-evolution-1-92e7873218c7?sk=c0eb6a425e357938cb6b7a86fd268440" target="_blank" rel="noopener">history</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-biological-neural-network-vs-artificial-neural-network-580f92129b47?sk=cbe75a78211ce42147829df600ade1db" target="_blank" rel="noopener">biological vs artificial neural networks</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-perceptron-vs-logistic-regression-3f73f91e01d3?sk=563986820350d714c9297ffe5c87af0b" target="_blank" rel="noopener">perceptron vs logistic regression</a>.</li>
+    <li>Bathula, C. P. Deep Learning series, Parts 4–9. <i>Towards AI</i>: <a href="https://medium.com/towards-artificial-intelligence/deep-learning-multi-layered-perceptron-mlp-8abef7ee5662?sk=9d192d242ae351f44b7f9657bb3845a2" target="_blank" rel="noopener">MLP</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-part-5-how-to-train-your-neural-networks-92ea8fea370f?sk=9b23d03c15d8332c156b43bfcf4fd5d4" target="_blank" rel="noopener">training</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-part-6-activation-functions-in-neural-networks-d448b397c0fa?sk=38fdf3818be87ce3628c7b2cecd11530" target="_blank" rel="noopener">activations</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-7-optimize-your-neural-networks-through-dropouts-regularization-dc2ff156ff3c?sk=adeb8721f544c784cb9ad9702c8fc0bb" target="_blank" rel="noopener">dropout</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-part-8-optimizing-neural-networks-learning-through-initialization-normalization-da2793d22a60?sk=23cd0fedca66727b634896f2f6b0c782" target="_blank" rel="noopener">initialization and normalization</a> · <a href="https://medium.com/towards-artificial-intelligence/deep-learning-part-9-optimizers-are-what-you-need-04b0605498c0?sk=d358fd7f4c555a089feb9a84cc66dde3" target="_blank" rel="noopener">optimizers</a>.</li>
+  </ol>
+  <footer>Chandra Prakash Bathula · AA-5750 Contemporary Issues in Analytics · All computation runs in your browser; no data leaves the page.</footer>
+</section>
+</main>
