@@ -148,13 +148,13 @@ Xavier initialization scales weights according to the number of input and output
 The corresponding variance relationships are:
 
 $$
-\operatorname{Var}(W) = \frac{2}{n_{\text{in}}+n_{\text{out}}}
+\mathrm{Var}(W) = \frac{2}{n_{\text{in}}+n_{\text{out}}}
 $$
 
 for Xavier initialization, and:
 
 $$
-\operatorname{Var}(W) = \frac{2}{n_{\text{in}}}
+\mathrm{Var}(W) = \frac{2}{n_{\text{in}}}
 $$
 
 for He initialization, where \(n_{\text{in}}\) is the number of input units and \(n_{\text{out}}\) is the number of output units.
