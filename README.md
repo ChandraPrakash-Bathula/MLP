@@ -128,7 +128,7 @@ Activation functions introduce nonlinear transformations that allow neural netwo
 For example, the ReLU activation function is defined as:
 
 $$
-\operatorname{ReLU}(x) = \max(0,x)
+\mathrm{ReLU}(x) = \max(0,x)
 $$
 
 The sigmoid activation function is defined as:
